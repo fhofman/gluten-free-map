@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gluten_free_map}
+      POSTGRES_USER: ${POSTGRES_USER:-gluten_free_map}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gluten_free_map}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-gluten_free_map} -d ${POSTGRES_DB:-gluten_free_map}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gluten_free_map}:${POSTGRES_PASSWORD:-gluten_free_map}@db:5432/${POSTGRES_DB:-gluten_free_map}
+    ports:
+      - "${APP_PORT:-3001}:3001"
+
+volumes:
+  postgres_data:

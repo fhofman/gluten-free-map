@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: gluten-free-map
+    runtime: node
+    plan: free
+    region: virginia
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    autoDeployTrigger: commit
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gluten-free-map-db
+          property: connectionString
+
+databases:
+  - name: gluten-free-map-db
+    plan: free
+    region: virginia
+    postgresMajorVersion: '16'
+    databaseName: gluten_free_map
+    user: gluten_free_map
+    ipAllowList: []

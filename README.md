@@ -52,9 +52,10 @@ Pasos:
 Nota tecnica:
 
 - Render saltea su `npm install` automatico y el build ejecuta
-  `NPM_CONFIG_PRODUCTION=false npm ci` para incluir las `devDependencies`
-  necesarias al compilar, como Vite, TypeScript, `@types/react` y
-  `@types/react-dom`
+  `NPM_CONFIG_PRODUCTION=false npm ci`
+- las dependencias minimas de compilacion quedaron en `dependencies`
+  para que el build no dependa de si el proveedor instala o no
+  `devDependencies` antes de correr `tsc` y `vite`
 - `NODE_ENV=production` queda solo para el arranque del servidor, no para el paso
   de build
 

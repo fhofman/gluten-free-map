@@ -49,6 +49,13 @@ Pasos:
    - una base `gluten-free-map-db`
 6. Cuando termine, la app queda publicada en una URL `https://<nombre>.onrender.com`.
 
+Nota tecnica:
+
+- el build instala `devDependencies` de forma explicita porque Vite, TypeScript,
+  `vite/client` y `@types/node` se necesitan al compilar
+- `NODE_ENV=production` queda solo para el arranque del servidor, no para el paso
+  de build
+
 Limitaciones reales del plan gratis de Render:
 
 - el web service se duerme tras 15 minutos sin trafico

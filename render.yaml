@@ -4,13 +4,11 @@ services:
     runtime: node
     plan: free
     region: virginia
-    buildCommand: npm ci && npm run build
-    startCommand: npm run start
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: NODE_ENV=production npm run start
     autoDeployTrigger: commit
     healthCheckPath: /api/health
     envVars:
-      - key: NODE_ENV
-        value: production
       - key: HOST
         value: 0.0.0.0
       - key: DATABASE_URL

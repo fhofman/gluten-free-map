@@ -9,12 +9,16 @@ services:
     autoDeployTrigger: commit
     healthCheckPath: /api/health
     envVars:
+      - key: NODE_VERSION
+        value: 22.14.0
       - key: HOST
         value: 0.0.0.0
       - key: FRONTEND_URL
         value: https://gluten-free-map.onrender.com
       - key: BACKEND_URL
         value: https://gluten-free-map-api.onrender.com
+      - key: WORKOS_REDIRECT_URI
+        value: https://gluten-free-map-api.onrender.com/api/auth/callback
       - key: ALLOWED_ORIGINS
         value: https://gluten-free-map.onrender.com
       - key: WORKOS_API_KEY
@@ -37,6 +41,8 @@ services:
     staticPublishPath: dist/frontend
     autoDeployTrigger: commit
     envVars:
+      - key: NODE_VERSION
+        value: 22.14.0
       - key: VITE_API_BASE_URL
         value: https://gluten-free-map-api.onrender.com/api
     routes:

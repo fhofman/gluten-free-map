@@ -115,6 +115,15 @@ Variables sensibles en el Blueprint:
 - `WORKOS_COOKIE_PASSWORD`
 - `UPLOADTHING_TOKEN`
 
+Checklist de dominios:
+
+- `https://gluten-free-map.onrender.com` tiene que apuntar al Static Site `gluten-free-map`
+- `https://gluten-free-map-api.onrender.com` tiene que apuntar al Web Service `gluten-free-map-api`
+- el frontend llama al API en `https://gluten-free-map-api.onrender.com/api`
+- el callback de WorkOS tiene que ser `https://gluten-free-map-api.onrender.com/api/auth/callback`
+
+El Blueprint fija `NODE_VERSION=22.14.0` para ambos servicios. Si un servicio fue creado antes con otra configuración, conviene revisar esa variable también en el Dashboard.
+
 ## Seguridad
 
 Mejoras aplicadas:

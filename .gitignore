@@ -23,3 +23,4 @@ server/data/places.json
 *.njsproj
 *.sln
 *.sw?
+.env

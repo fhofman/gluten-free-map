@@ -101,10 +101,9 @@ El script deja ese email con rol `admin` en la tabla `users`. Cuando ese usuario
 
 ## Deploy en Render
 
-El repo ahora usa dos servicios en [`render.yaml`](./render.yaml):
+El deploy en Render queda resuelto con un solo servicio Node en [`render.yaml`](./render.yaml):
 
-- `gluten-free-map-api`: backend Node
-- `gluten-free-map`: frontend static site
+- `gluten-free-map`: backend Express sirviendo tambien el build del frontend
 
 Además crea la base `gluten-free-map-db`.
 
@@ -117,12 +116,11 @@ Variables sensibles en el Blueprint:
 
 Checklist de dominios:
 
-- `https://gluten-free-map.onrender.com` tiene que apuntar al Static Site `gluten-free-map`
-- `https://gluten-free-map-api.onrender.com` tiene que apuntar al Web Service `gluten-free-map-api`
-- el frontend llama al API en `https://gluten-free-map-api.onrender.com/api`
-- el callback de WorkOS tiene que ser `https://gluten-free-map-api.onrender.com/api/auth/callback`
+- `https://gluten-free-map.onrender.com` sirve frontend y API
+- el frontend llama al API en `/api`
+- el callback de WorkOS tiene que ser `https://gluten-free-map.onrender.com/api/auth/callback`
 
-El Blueprint fija `NODE_VERSION=22.14.0` para ambos servicios. Si un servicio fue creado antes con otra configuración, conviene revisar esa variable también en el Dashboard.
+El Blueprint fija `NODE_VERSION=22.14.0`. Si el servicio fue creado antes con otra configuración, conviene revisar esa variable tambien en el Dashboard.
 
 ## Seguridad
 

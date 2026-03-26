@@ -1,10 +1,10 @@
 services:
   - type: web
-    name: gluten-free-map-api
+    name: gluten-free-map
     runtime: node
     plan: free
     region: virginia
-    buildCommand: NPM_CONFIG_PRODUCTION=false npm ci && npm run build:api
+    buildCommand: NPM_CONFIG_PRODUCTION=false npm ci && npm run build
     startCommand: NODE_ENV=production npm run start
     autoDeployTrigger: commit
     healthCheckPath: /api/health
@@ -16,11 +16,13 @@ services:
       - key: FRONTEND_URL
         value: https://gluten-free-map.onrender.com
       - key: BACKEND_URL
-        value: https://gluten-free-map-api.onrender.com
+        value: https://gluten-free-map.onrender.com
       - key: WORKOS_REDIRECT_URI
-        value: https://gluten-free-map-api.onrender.com/api/auth/callback
+        value: https://gluten-free-map.onrender.com/api/auth/callback
       - key: ALLOWED_ORIGINS
         value: https://gluten-free-map.onrender.com
+      - key: VITE_API_BASE_URL
+        value: /api
       - key: WORKOS_API_KEY
         sync: false
       - key: WORKOS_CLIENT_ID
@@ -33,22 +35,6 @@ services:
         fromDatabase:
           name: gluten-free-map-db
           property: connectionString
-  - type: web
-    name: gluten-free-map
-    runtime: static
-    region: virginia
-    buildCommand: NPM_CONFIG_PRODUCTION=false npm ci && npm run build:web
-    staticPublishPath: dist/frontend
-    autoDeployTrigger: commit
-    envVars:
-      - key: NODE_VERSION
-        value: 22.14.0
-      - key: VITE_API_BASE_URL
-        value: https://gluten-free-map-api.onrender.com/api
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
 
 databases:
   - name: gluten-free-map-db

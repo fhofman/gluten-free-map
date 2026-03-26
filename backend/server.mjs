@@ -1,4 +1,7 @@
 import crypto from 'node:crypto'
+import { existsSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import express from 'express'
 import cookieParser from 'cookie-parser'
 import cors from 'cors'
@@ -24,6 +27,10 @@ const VALID_ROLES = new Set(['admin', 'member'])
 const SESSION_COOKIE_NAME = 'gfm.session'
 const AUTH_STATE_COOKIE_NAME = 'gfm.auth.state'
 const AUTH_RETURN_COOKIE_NAME = 'gfm.auth.return'
+const serverDir = dirname(fileURLToPath(import.meta.url))
+const frontendDistDir = resolve(serverDir, '../dist/frontend')
+const frontendIndexPath = resolve(frontendDistDir, 'index.html')
+const hasFrontendBuild = existsSync(frontendIndexPath)
 
 const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
@@ -1422,6 +1429,22 @@ app.post('/api/admin/listings/:listingId/moderate', writeLimiter, async (request
     next(error)
   }
 })
+
+app.use('/api', (_request, response) => {
+  response.status(404).json({ message: 'No encontre esa ruta.' })
+})
+
+if (hasFrontendBuild) {
+  app.use(
+    express.static(frontendDistDir, {
+      index: false,
+    }),
+  )
+
+  app.get(/^\/(?!api(?:\/|$)).*/, (_request, response) => {
+    response.sendFile(frontendIndexPath)
+  })
+}
 
 app.use((error, _request, response, _next) => {
   if (error === invalidCsrfTokenError) {

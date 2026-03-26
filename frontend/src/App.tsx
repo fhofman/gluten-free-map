@@ -214,10 +214,13 @@ function App() {
   })
 
   const selectedListing =
-    listings.find((listing) => listing.id === selectedId) ??
-    filteredPhysicalListings[0] ??
-    filteredOnlineListings[0] ??
-    null
+    filteredPhysicalListings.find((listing) => listing.id === selectedId) ?? null
+
+  useEffect(() => {
+    if (selectedId && !filteredPhysicalListings.some((listing) => listing.id === selectedId)) {
+      setSelectedId(null)
+    }
+  }, [filteredPhysicalListings, selectedId])
 
   const groupedOnlineListings = useMemo(() => {
     const groups = new globalThis.Map<string, Listing[]>()
@@ -257,11 +260,6 @@ function App() {
     try {
       const nextListings = await fetchListings({ kind: 'all' })
       setListings(nextListings)
-
-      if (!selectedId && nextListings.length > 0) {
-        const firstPhysical = nextListings.find((listing) => listing.kind === 'physical')
-        setSelectedId(firstPhysical?.id ?? nextListings[0]?.id ?? null)
-      }
     } catch (error) {
       setGlobalError(error instanceof Error ? error.message : 'No pude cargar los items.')
     } finally {
@@ -338,6 +336,7 @@ function App() {
 
   function handleMapClick({ latLng }: { latLng: [number, number] }) {
     if (draft.kind !== 'physical' || !formOpen) {
+      setSelectedId(null)
       return
     }
 
@@ -480,7 +479,6 @@ function App() {
   return (
     <div className="shell">
       <div className="brand-cloud">
-        <span className="brand-title">{t.title}</span>
         <div className="route-switch">
           <NavLink to="/" className={({ isActive }) => navClass(isActive)}>
             {t.mapView}
@@ -514,14 +512,9 @@ function App() {
             </button>
           </>
         ) : (
-          <>
-            <a className="ghost-button" href={`${authBaseHref}?screenHint=sign-in&returnTo=${encodeURIComponent(location.pathname)}`}>
-              {t.signIn}
-            </a>
-            <a className="solid-button" href={`${authBaseHref}?screenHint=sign-up&returnTo=${encodeURIComponent(location.pathname)}`}>
-              {t.signUp}
-            </a>
-          </>
+          <a className="ghost-button" href={`${authBaseHref}?screenHint=sign-in&returnTo=${encodeURIComponent(location.pathname)}`}>
+            {t.signIn}
+          </a>
         )}
       </div>
 
@@ -554,6 +547,7 @@ function App() {
               onMapZoomChange={setMapZoom}
               onMapClick={handleMapClick}
               onSelectListing={handleSelectListing}
+              onClearSelectedListing={() => setSelectedId(null)}
               formOpen={formOpen}
               draft={draft}
               onOpenForm={handleOpenForm}
@@ -643,6 +637,7 @@ function MapView(props: {
   onMapZoomChange: (value: number) => void
   onMapClick: (input: { latLng: [number, number] }) => void
   onSelectListing: (listing: Listing) => void
+  onClearSelectedListing: () => void
   formOpen: boolean
   draft: ListingDraft
   onOpenForm: (kind: ListingKind) => void
@@ -685,6 +680,7 @@ function MapView(props: {
     onMapZoomChange,
     onMapClick,
     onSelectListing,
+    onClearSelectedListing,
     formOpen,
     draft,
     onOpenForm,
@@ -711,81 +707,87 @@ function MapView(props: {
     reviewStatus,
   } = props
   const t = copy[language]
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false)
 
   return (
     <section className="map-screen">
-      <div className="map-overlay-left">
-        <div className="search-card">
-          <div className="card-title">{t.filters}</div>
-          <input
-            value={search}
-            onChange={(event) => onSearchChange(event.target.value)}
-            className="search-input"
-            placeholder={t.search}
-          />
-
-          <div className="chip-row">
-            <button
-              type="button"
-              className={categoryFilter === 'all' ? 'chip chip-active' : 'chip'}
-              onClick={() => onCategoryFilterChange('all')}
-            >
-              All
-            </button>
-            {(['restaurant', 'store', 'market', 'productSpot'] as ListingCategory[]).map(
-              (category) => (
-                <button
-                  key={category}
-                  type="button"
-                  className={categoryFilter === category ? 'chip chip-active' : 'chip'}
-                  onClick={() => onCategoryFilterChange(category)}
-                >
-                  {categoryLabels[language][category]}
-                </button>
-              ),
-            )}
-          </div>
-
-          <label className="toggle-row">
+      <div className="map-search-shell">
+        <div className="search-card search-card-map">
+          <div className="map-search-bar">
             <input
-              type="checkbox"
-              checked={verifiedOnly}
-              onChange={(event) => onVerifiedOnlyChange(event.target.checked)}
+              value={search}
+              onChange={(event) => onSearchChange(event.target.value)}
+              className="map-search-input"
+              placeholder={t.search}
+              aria-label={t.search}
             />
-            <span>{t.verified}</span>
-          </label>
-
-          <div className="action-row">
-            <button type="button" className="solid-button" onClick={() => onOpenForm('physical')}>
-              {t.addPhysical}
-            </button>
-            <button type="button" className="ghost-button" onClick={() => onOpenForm('online')}>
-              {t.addOnline}
+            <span className="search-icon-badge" aria-hidden="true">
+              <svg viewBox="0 0 24 24" className="icon-svg">
+                <circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" strokeWidth="2" />
+                <path d="M16 16l4.5 4.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </span>
+            <button
+              type="button"
+              className={advancedFiltersOpen ? 'filter-icon-button filter-icon-button-active' : 'filter-icon-button'}
+              onClick={() => setAdvancedFiltersOpen((current) => !current)}
+              aria-expanded={advancedFiltersOpen}
+              aria-label={advancedFiltersOpen ? t.hideFilters : t.showFilters}
+            >
+              <svg viewBox="0 0 24 24" className="icon-svg">
+                <path
+                  d="M4 7h16M7 12h10M10 17h4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
             </button>
           </div>
-        </div>
 
-        <div className="listing-stack">
-          {loading ? <div className="status-card">Loading map...</div> : null}
-          {!loading && listings.length === 0 ? <div className="status-card">{t.emptyMap}</div> : null}
-          {listings.map((listing) => (
-            <button
-              key={listing.id}
-              type="button"
-              className={`listing-card ${selectedListing?.id === listing.id ? 'listing-card-active' : ''}`}
-              onClick={() => onSelectListing(listing)}
-            >
-              <span className="listing-meta" style={{ color: categoryAccent[listing.category] }}>
-                {categoryLabels[language][listing.category]}
-              </span>
-              <strong>{listing.name}</strong>
-              <span>{listing.city}</span>
-              <div className="listing-traits">
-                {listing.verified ? <span>{t.verified}</span> : null}
-                {listing.dedicatedKitchen ? <span>{t.dedicatedKitchen}</span> : null}
+          {advancedFiltersOpen ? (
+            <div className="advanced-search-panel">
+              <div className="filter-grid">
+                <label>
+                  {t.category}
+                  <select
+                    value={categoryFilter}
+                    onChange={(event) => onCategoryFilterChange(event.target.value as CategoryFilter)}
+                    className="compact-select"
+                  >
+                    <option value="all">{t.allLabel}</option>
+                    {(['restaurant', 'store', 'market', 'productSpot'] as ListingCategory[]).map((category) => (
+                      <option key={category} value={category}>
+                        {categoryLabels[language][category]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="toggle-row compact-toggle">
+                  <input
+                    type="checkbox"
+                    checked={verifiedOnly}
+                    onChange={(event) => onVerifiedOnlyChange(event.target.checked)}
+                  />
+                  <span>{t.verified}</span>
+                </label>
               </div>
-            </button>
-          ))}
+
+              <div className="action-row">
+                <button type="button" className="solid-button" onClick={() => onOpenForm('physical')}>
+                  {t.addPhysical}
+                </button>
+                <button type="button" className="ghost-button" onClick={() => onOpenForm('online')}>
+                  {t.addOnline}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {loading ? <p className="helper-text">Loading map...</p> : null}
+          {!loading && listings.length === 0 ? <p className="helper-text">{t.emptyMap}</p> : null}
         </div>
       </div>
 
@@ -799,7 +801,12 @@ function MapView(props: {
                 </span>
                 <h2>{selectedListing.name}</h2>
               </div>
-              <StatusPills language={language} listing={selectedListing} />
+              <div className="detail-header-actions">
+                <StatusPills language={language} listing={selectedListing} />
+                <button type="button" className="ghost-button detail-close-button" onClick={onClearSelectedListing}>
+                  {t.close}
+                </button>
+              </div>
             </div>
 
             <div className="popup-body">

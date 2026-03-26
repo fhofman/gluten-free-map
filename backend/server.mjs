@@ -27,6 +27,7 @@ const VALID_ROLES = new Set(['admin', 'member'])
 const SESSION_COOKIE_NAME = 'gfm.session'
 const AUTH_STATE_COOKIE_NAME = 'gfm.auth.state'
 const AUTH_RETURN_COOKIE_NAME = 'gfm.auth.return'
+const MIN_WORKOS_COOKIE_PASSWORD_LENGTH = 32
 const serverDir = dirname(fileURLToPath(import.meta.url))
 const frontendDistDir = resolve(serverDir, '../dist/frontend')
 const frontendIndexPath = resolve(frontendDistDir, 'index.html')
@@ -62,6 +63,10 @@ const env = {
     ]
       .filter(Boolean)
       .join(','),
+}
+
+function hasValidWorkosCookiePassword() {
+  return env.workosCookiePassword.length >= MIN_WORKOS_COOKIE_PASSWORD_LENGTH
 }
 
 if (!env.databaseUrl) {
@@ -179,10 +184,10 @@ class HttpError extends Error {
 }
 
 function ensureWorkosConfigured() {
-  if (!workos || !env.workosClientId || !env.workosCookiePassword) {
+  if (!workos || !env.workosClientId || !hasValidWorkosCookiePassword()) {
     throw new HttpError(
       503,
-      'WorkOS no está configurado. Define WORKOS_API_KEY, WORKOS_CLIENT_ID y WORKOS_COOKIE_PASSWORD.',
+      `WorkOS no está configurado. Define WORKOS_API_KEY, WORKOS_CLIENT_ID y un WORKOS_COOKIE_PASSWORD de al menos ${MIN_WORKOS_COOKIE_PASSWORD_LENGTH} caracteres.`,
     )
   }
 }
@@ -552,7 +557,7 @@ async function upsertUserFromWorkos(workosUser) {
 }
 
 async function readSessionFromRequest(request) {
-  if (!workos || !env.workosCookiePassword) {
+  if (!workos || !hasValidWorkosCookiePassword()) {
     return null
   }
 
@@ -1084,7 +1089,7 @@ app.get('/api/auth/session', async (request, response, next) => {
     const session = await readSessionFromRequest(request)
 
     response.json({
-      authConfigured: Boolean(workos && env.workosClientId && env.workosCookiePassword),
+      authConfigured: Boolean(workos && env.workosClientId && hasValidWorkosCookiePassword()),
       uploadConfigured: Boolean(env.uploadthingToken),
       csrfToken: generateCsrfToken(request, response),
       user: session?.user ?? null,
@@ -1131,10 +1136,18 @@ app.get('/api/auth/callback', authLimiter, async (request, response, next) => {
     const expectedState = request.cookies[AUTH_STATE_COOKIE_NAME]
     const returnTo = request.cookies[AUTH_RETURN_COOKIE_NAME] ?? '/'
 
-    response.clearCookie(AUTH_STATE_COOKIE_NAME, cookieOptions())
-    response.clearCookie(AUTH_RETURN_COOKIE_NAME, cookieOptions())
+    if (!code) {
+      throw new HttpError(400, 'No llegó un código válido desde WorkOS.')
+    }
 
-    if (!code || !state || !expectedState || state !== expectedState) {
+    if (!expectedState) {
+      throw new HttpError(
+        400,
+        'No pude validar el regreso desde WorkOS. Volvé a iniciar sesión desde este navegador y completá el flujo ahí.',
+      )
+    }
+
+    if (state && state !== expectedState) {
       throw new HttpError(400, 'No pude validar el regreso desde WorkOS.')
     }
 
@@ -1163,6 +1176,8 @@ app.get('/api/auth/callback', authLimiter, async (request, response, next) => {
       }),
     )
 
+    response.clearCookie(AUTH_STATE_COOKIE_NAME, cookieOptions())
+    response.clearCookie(AUTH_RETURN_COOKIE_NAME, cookieOptions())
     response.redirect(redirectToFrontend(returnTo))
   } catch (error) {
     next(error)

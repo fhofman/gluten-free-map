@@ -17,9 +17,10 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  app:
+  backend:
     build:
       context: .
+      dockerfile: Dockerfile
     depends_on:
       db:
         condition: service_healthy
@@ -27,9 +28,30 @@ services:
       NODE_ENV: production
       HOST: 0.0.0.0
       PORT: 3001
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4173}
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:3001}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:4173}
       DATABASE_URL: postgresql://${POSTGRES_USER:-gluten_free_map}:${POSTGRES_PASSWORD:-gluten_free_map}@db:5432/${POSTGRES_DB:-gluten_free_map}
+      WORKOS_API_KEY: ${WORKOS_API_KEY:-}
+      WORKOS_CLIENT_ID: ${WORKOS_CLIENT_ID:-}
+      WORKOS_COOKIE_PASSWORD: ${WORKOS_COOKIE_PASSWORD:-}
+      UPLOADTHING_TOKEN: ${UPLOADTHING_TOKEN:-}
     ports:
-      - "${APP_PORT:-3001}:3001"
+      - "${BACKEND_PORT:-3001}:3001"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3001/api}
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+    ports:
+      - "${FRONTEND_PORT:-4173}:4173"
 
 volumes:
   postgres_data:

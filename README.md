@@ -1,106 +1,129 @@
 # Gluten Free Map
 
-Mapa colaborativo para lugares y productos aptos, con:
+Mapa comunitario para celíacos con frontend y backend separados.
 
-- fotos multiples por lugar
-- puntuacion de 1 a 5
-- comentarios por usuario
-- moderacion de lugares
-- persistencia en PostgreSQL
+## Qué cambió
 
-## Requisitos
+- frontend React/Vite en [`frontend/`](./frontend)
+- backend Express/PostgreSQL en [`backend/`](./backend)
+- auth real con WorkOS
+- uploads con UploadThing
+- mapa full-screen con paneles flotantes
+- catálogo de sitios web sin dirección física
+- panel admin separado para moderación y verificación
+- script para promover admins por email
 
-- Node 22.14.0 o compatible
-- Docker y Docker Compose si queres levantar todo containerizado
+## Stack
 
-## Levantar con Docker
+- frontend: React 19, Vite, React Router, Pigeon Maps, UploadThing
+- backend: Node 22, Express 5, PostgreSQL, WorkOS, UploadThing
+- seguridad: sesiones por cookie, CSRF, CORS restringido, rate limiting, `helmet`
 
-El camino recomendado.
+## Variables de entorno
 
-```bash
-cp .env.example .env
-docker compose up --build
-```
+Partí de [`.env.example`](./.env.example).
 
-La app queda en `http://localhost:3001`.
+Variables clave:
 
-Servicios:
+- `DATABASE_URL`
+- `FRONTEND_URL`
+- `BACKEND_URL`
+- `ALLOWED_ORIGINS`
+- `WORKOS_API_KEY`
+- `WORKOS_CLIENT_ID`
+- `WORKOS_COOKIE_PASSWORD`
+- `UPLOADTHING_TOKEN`
+- `VITE_API_BASE_URL`
 
-- `app`: frontend compilado + API Express
-- `db`: PostgreSQL 16
+Notas:
 
-## Deploy gratis con dominio `onrender.com`
-
-Deje el repo preparado para Render con [render.yaml](./render.yaml). Esa opcion
-te da:
-
-- app publica con subdominio gratis `*.onrender.com`
-- HTTPS administrado por Render
-- PostgreSQL gratis enlazado por `DATABASE_URL`
-
-Pasos:
-
-1. Subi este repo a GitHub.
-2. Crea una cuenta en Render.
-3. En Render, elegi `New > Blueprint`.
-4. Conecta el repo y confirma el `render.yaml`.
-5. Render va a crear:
-   - un web service `gluten-free-map`
-   - una base `gluten-free-map-db`
-6. Cuando termine, la app queda publicada en una URL `https://<nombre>.onrender.com`.
-
-Nota tecnica:
-
-- Render saltea su `npm install` automatico y el build ejecuta
-  `NPM_CONFIG_PRODUCTION=false npm ci`
-- las dependencias minimas de compilacion quedaron en `dependencies`
-  para que el build no dependa de si el proveedor instala o no
-  `devDependencies` antes de correr `tsc` y `vite`
-- `NODE_ENV=production` queda solo para el arranque del servidor, no para el paso
-  de build
-
-Limitaciones reales del plan gratis de Render:
-
-- el web service se duerme tras 15 minutos sin trafico
-- la primera carga despues de dormirse tarda mas
-- la base Postgres gratis vence a los 30 dias si no la pasas a un plan pago
-- solo admite una base Postgres gratis por workspace
-
-Si mas adelante compras un dominio propio, Render tambien permite conectarlo sin
-rehacer el deploy.
+- si no configurás WorkOS, la app arranca igual pero el login queda deshabilitado
+- si no configurás UploadThing, la carga de fotos queda deshabilitada
 
 ## Desarrollo local
 
-Si preferis correr sin Docker, primero necesitás un PostgreSQL accesible y definir
-`DATABASE_URL`.
-
-Ejemplo:
+1. Copiá el archivo de ejemplo:
 
 ```bash
-export DATABASE_URL=postgresql://gluten_free_map:gluten_free_map@localhost:5432/gluten_free_map
+cp .env.example .env
+```
+
+2. Si corrés Postgres fuera de Docker, definí `DATABASE_URL`.
+
+3. Instalá dependencias y levantá ambos servicios:
+
+```bash
 nvm use
 npm install
 npm run dev
 ```
 
-El frontend usa Vite y el backend Express corre en paralelo.
+Puertos por defecto:
+
+- frontend: `http://localhost:5173`
+- backend: `http://localhost:3001`
+
+## Docker Compose
+
+Levanta `frontend`, `backend` y `db` por separado:
+
+```bash
+docker compose up --build
+```
+
+Puertos por defecto:
+
+- frontend: `http://localhost:4173`
+- backend: `http://localhost:3001`
 
 ## Scripts
 
-- `npm run dev`: frontend + backend en modo desarrollo
-- `npm run build`: build del frontend
-- `npm run start`: backend sirviendo la build
-- `npm run preview`: alias de `start`
-- `npm run lint`: lint del frontend
+- `npm run dev`: frontend + backend en paralelo
+- `npm run dev:web`: Vite para el frontend
+- `npm run dev:api`: API Express con watch
+- `npm run build`: build completo
+- `npm run build:web`: build del frontend
+- `npm run build:api`: chequeo sintáctico del backend
+- `npm run start`: backend en modo producción
+- `npm run preview`: preview del frontend
 
-## Persistencia
+## Admin
 
-- Lugares, fotos, reseñas y aprobaciones quedan en PostgreSQL
-- Las fotos se guardan en la base como `BYTEA`
-- Si la base arranca vacía, el backend carga datos demo
+No se crea desde la UI.
 
-## Notas
+Promové un email a admin con:
 
-- El login sigue siendo demo/local en el frontend
-- Para que la app arranque, el backend necesita `DATABASE_URL`
-# gluten-free-map
+```bash
+DATABASE_URL=postgresql://... node backend/scripts/create-admin.mjs admin@example.com "Admin Name"
+```
+
+El script deja ese email con rol `admin` en la tabla `users`. Cuando ese usuario entre por WorkOS, conservará el rol.
+
+## Deploy en Render
+
+El repo ahora usa dos servicios en [`render.yaml`](./render.yaml):
+
+- `gluten-free-map-api`: backend Node
+- `gluten-free-map`: frontend static site
+
+Además crea la base `gluten-free-map-db`.
+
+Variables sensibles en el Blueprint:
+
+- `WORKOS_API_KEY`
+- `WORKOS_CLIENT_ID`
+- `WORKOS_COOKIE_PASSWORD`
+- `UPLOADTHING_TOKEN`
+
+## Seguridad
+
+Mejoras aplicadas:
+
+- ya no se acepta el rol del usuario desde el frontend
+- la sesión vive del lado servidor con WorkOS
+- protección CSRF en endpoints mutantes
+- cookies `httpOnly`
+- CORS limitado por `ALLOWED_ORIGINS`
+- `helmet` para headers de seguridad
+- rate limiting en auth y escrituras
+- `npm audit --omit=dev` limpio en dependencias de producción

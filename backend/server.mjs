@@ -170,7 +170,12 @@ const {
   },
   getCsrfTokenFromRequest: (request) => request.headers['x-csrf-token'],
   skipCsrfProtection: (request) =>
-    request.path === '/api/auth/login' || request.path === '/api/auth/callback',
+    request.path === '/api/auth/login' ||
+    request.path === '/auth/login' ||
+    request.path === '/api/auth/callback' ||
+    request.path === '/auth/callback' ||
+    request.path === '/api/uploadthing' ||
+    request.path === '/uploadthing',
 })
 
 app.use('/api', doubleCsrfProtection)
@@ -260,7 +265,13 @@ const listingInputSchema = z
       ])
       .nullable()
       .optional(),
-    websiteUrl: z.string().trim().url().optional().nullable(),
+    websiteUrl: z.preprocess(
+      (value) => {
+        const normalized = `${value ?? ''}`.trim()
+        return normalized || null
+      },
+      z.string().url().nullable().optional(),
+    ),
     description: z.string().trim().min(12).max(2000),
     tags: z.array(z.string().trim().min(1).max(50)).max(20).default([]),
     products: z.array(z.string().trim().min(1).max(80)).max(30).default([]),

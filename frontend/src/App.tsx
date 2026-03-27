@@ -170,6 +170,16 @@ function splitCommaList(value: string) {
     .filter(Boolean)
 }
 
+function mergeUploadRefs(current: UploadRef[], incoming: UploadRef[]) {
+  const byKey = new Map(current.map((file) => [file.key, file]))
+
+  incoming.forEach((file) => {
+    byKey.set(file.key, file)
+  })
+
+  return Array.from(byKey.values())
+}
+
 function formatDate(value: string | null, language: Language) {
   if (!value) {
     return ''
@@ -710,6 +720,7 @@ function App() {
               onCreateListing={handleCreateListing}
               formPending={formPending}
               formStatus={formStatus}
+              onFormStatusChange={setFormStatus}
               session={session}
               uploadRefs={uploadRefs}
               onUploadRefsChange={setUploadRefs}
@@ -799,6 +810,7 @@ function MapView(props: {
   onCreateListing: (event: FormEvent<HTMLFormElement>) => void
   formPending: boolean
   formStatus: string | null
+  onFormStatusChange: (value: string | null) => void
   session: SessionPayload | null
   uploadRefs: UploadRef[]
   onUploadRefsChange: (value: UploadRef[]) => void
@@ -841,6 +853,7 @@ function MapView(props: {
     onCreateListing,
     formPending,
     formStatus,
+    onFormStatusChange,
     session,
     uploadRefs,
     onUploadRefsChange,
@@ -1218,17 +1231,20 @@ function MapView(props: {
                   onClientUploadComplete={(
                     files: Array<{ serverData: UploadRef }>,
                   ) => {
-                    onUploadRefsChange(
-                      files.map((file) => ({
+                    const nextUploads = files.map((file) => ({
                         key: file.serverData.key,
                         url: file.serverData.url,
                         name: file.serverData.name,
-                      })),
-                    )
+                      }))
+
+                    onUploadRefsChange(mergeUploadRefs(uploadRefs, nextUploads))
+                    if (nextUploads.length > 0) {
+                      onFormStatusChange(t.uploadSuccess)
+                    }
                   }}
                   onUploadError={(error: Error) => {
                     onUploadRefsChange([])
-                    console.error(error)
+                    onFormStatusChange(`${t.uploadError} ${error.message}`)
                   }}
                 />
                 {uploadRefs.length > 0 ? (

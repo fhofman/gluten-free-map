@@ -365,6 +365,48 @@ a {
   gap: 0.55rem;
 }
 
+.upload-shell,
+.upload-copy,
+.upload-preview-meta {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.upload-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 0.75rem;
+}
+
+.upload-preview-card {
+  margin: 0;
+  padding: 0.6rem;
+  border-radius: 20px;
+  border: 1px solid rgba(23, 49, 43, 0.1);
+  background: rgba(255, 255, 255, 0.62);
+  display: grid;
+  gap: 0.6rem;
+}
+
+.upload-status-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  padding: 0.28rem 0.62rem;
+  border-radius: 999px;
+  background: rgba(44, 102, 88, 0.14);
+  color: #24463d;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.upload-preview-name {
+  font-size: 0.88rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
 .tag-token,
 .location-pill,
 .status-pill {

@@ -1222,7 +1222,10 @@ function MapView(props: {
 
             {session?.uploadConfigured && session.csrfToken ? (
               <div className="upload-shell">
-                <div className="card-title">{t.uploadPhotos}</div>
+                <div className="upload-copy">
+                  <div className="card-title">{t.uploadPhotos}</div>
+                  <p className="helper-text">{t.uploadHint}</p>
+                </div>
                 <ListingUploadDropzone
                   endpoint="listingImage"
                   headers={{
@@ -1248,11 +1251,15 @@ function MapView(props: {
                   }}
                 />
                 {uploadRefs.length > 0 ? (
-                  <div className="upload-list">
+                  <div className="upload-preview-grid">
                     {uploadRefs.map((file) => (
-                      <span key={file.key} className="tag-token">
-                        {file.name}
-                      </span>
+                      <figure key={file.key} className="upload-preview-card">
+                        <img src={file.url} alt={file.name} className="photo-thumb" />
+                        <figcaption className="upload-preview-meta">
+                          <span className="upload-status-badge">{t.uploadedLabel}</span>
+                          <span className="upload-preview-name">{file.name}</span>
+                        </figcaption>
+                      </figure>
                     ))}
                   </div>
                 ) : null}

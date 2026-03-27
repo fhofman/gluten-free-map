@@ -113,6 +113,11 @@ export const copy = {
     sessionSyncError: 'No pude validar tu sesión antes de guardar. Recargá e intentá de nuevo.',
     sessionBackendMismatch:
       'El backend no recibió tu sesión al guardar. Recargá e ingresá de nuevo.',
+    submissionPendingReview:
+      'Tu envío quedó pendiente de revisión. No aparece todavía en el mapa o catálogo hasta que un admin lo apruebe y verifique.',
+    submissionSavedNotVisible:
+      'Tu envío se guardó, pero todavía no aparece porque no está verificado.',
+    submissionPublished: 'Tu envío ya está publicado.',
     emptyMap: 'No hay resultados con esos filtros.',
     emptyCatalog: 'No hay sitios online cargados todavía.',
     emptyAdmin: 'No hay envíos pendientes ni verificaciones abiertas.',
@@ -198,6 +203,11 @@ export const copy = {
     sessionSyncError: 'Could not validate your session before saving. Reload and try again.',
     sessionBackendMismatch:
       'The backend did not receive your session while saving. Reload and sign in again.',
+    submissionPendingReview:
+      'Your submission is pending review. It will not appear in the map or catalog until an admin approves and verifies it.',
+    submissionSavedNotVisible:
+      'Your submission was saved, but it is still hidden because it is not verified.',
+    submissionPublished: 'Your submission is now live.',
     emptyMap: 'No results for the current filters.',
     emptyCatalog: 'No online stores have been added yet.',
     emptyAdmin: 'No pending submissions or verification tasks right now.',

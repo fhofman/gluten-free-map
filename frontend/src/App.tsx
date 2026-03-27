@@ -46,11 +46,6 @@ const placeholderWebsiteHosts = new Set(['example.com', 'www.example.com'])
 
 const ListingUploadDropzone = generateUploadDropzone<any>({
   url: '/api/uploadthing',
-  fetch: (input: RequestInfo | URL, init?: RequestInit) =>
-    fetch(input, {
-      ...init,
-      credentials: 'include',
-    }),
 })
 
 type CategoryFilter = string | 'all'
@@ -271,6 +266,10 @@ function App() {
   const [pendingListings, setPendingListings] = useState<Listing[]>([])
   const [loadingListings, setLoadingListings] = useState(true)
   const [globalError, setGlobalError] = useState<string | null>(null)
+  const [globalNotice, setGlobalNotice] = useState<{
+    tone: 'info' | 'success'
+    message: string
+  } | null>(null)
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -307,6 +306,20 @@ function App() {
       void refreshPendingListings()
     }
   }, [location.pathname, session?.user?.role])
+
+  useEffect(() => {
+    if (!globalNotice) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setGlobalNotice(null)
+    }, 7000)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [globalNotice])
 
   useEffect(() => {
     if (didAutoLocateMobile || location.pathname !== '/' || typeof window === 'undefined') {
@@ -591,21 +604,42 @@ function App() {
         photoKeys: uploadRefs.map((photo) => photo.key),
       }
 
-      await createListing(payload, activeSession.csrfToken)
+      const createdListing = await createListing(payload, activeSession.csrfToken)
       await refreshListings()
 
       if (activeSession.user.role === 'admin') {
         await refreshPendingListings()
       }
 
+      const isVisibleOnPublicSurface =
+        createdListing.approvalStatus === 'approved' &&
+        (createdListing.kind !== 'physical' || createdListing.verified)
+
+      setGlobalNotice({
+        tone: isVisibleOnPublicSurface ? 'success' : 'info',
+        message:
+          createdListing.approvalStatus !== 'approved'
+            ? t.submissionPendingReview
+            : createdListing.kind === 'physical' && !createdListing.verified
+              ? t.submissionSavedNotVisible
+              : t.submissionPublished,
+      })
+
+      if (
+        createdListing.kind === 'physical' &&
+        createdListing.approvalStatus === 'approved' &&
+        createdListing.verified &&
+        createdListing.coordinates
+      ) {
+        setSelectedId(createdListing.id)
+        setMapCenter(createdListing.coordinates)
+        setMapZoom(15)
+      }
+
       setFormOpen(false)
       setDraft(createDraft('physical', language))
       setUploadRefs([])
-      setFormStatus(
-        language === 'es'
-          ? 'Item enviado correctamente.'
-          : 'Listing submitted successfully.',
-      )
+      setFormStatus(null)
     } catch (error) {
       if (error instanceof Error) {
         if (error.message === 'Inicia sesion para continuar.') {
@@ -739,6 +773,7 @@ function App() {
       {authWarning ? <FloatingAlert tone="warning">{t.authMissing}</FloatingAlert> : null}
       {uploadWarning ? <FloatingAlert tone="info">{t.uploadMissing}</FloatingAlert> : null}
       {globalError ? <FloatingAlert tone="danger">{globalError}</FloatingAlert> : null}
+      {globalNotice ? <FloatingAlert tone={globalNotice.tone}>{globalNotice.message}</FloatingAlert> : null}
 
       <Routes>
         <Route
@@ -833,7 +868,7 @@ function FloatingAlert({
   tone,
 }: {
   children: string
-  tone: 'warning' | 'danger' | 'info'
+  tone: 'warning' | 'danger' | 'info' | 'success'
 }) {
   return <div className={`floating-alert floating-alert-${tone}`}>{children}</div>
 }

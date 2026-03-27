@@ -70,6 +70,28 @@ function hasValidWorkosCookiePassword() {
   return env.workosCookiePassword.length >= MIN_WORKOS_COOKIE_PASSWORD_LENGTH
 }
 
+function getPublicUploadthingCallbackUrl() {
+  const candidates = [env.frontendUrl, env.backendUrl]
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue
+    }
+
+    if (!candidate.startsWith('https://')) {
+      continue
+    }
+
+    if (candidate.includes('localhost') || candidate.includes('127.0.0.1')) {
+      continue
+    }
+
+    return `${candidate}/api/uploadthing`
+  }
+
+  return undefined
+}
+
 if (!env.databaseUrl) {
   throw new Error('DATABASE_URL es obligatorio para iniciar el backend.')
 }
@@ -90,6 +112,7 @@ const workos = env.workosApiKey
   : null
 
 const app = express()
+const uploadthingCallbackUrl = getPublicUploadthingCallbackUrl()
 
 if (env.trustProxy) {
   app.set('trust proxy', env.trustProxy === 'true' ? true : Number.parseInt(env.trustProxy, 10))
@@ -1119,6 +1142,7 @@ app.use(
     router: uploadRouter,
     config: {
       token: env.uploadthingToken,
+      ...(uploadthingCallbackUrl ? { callbackUrl: uploadthingCallbackUrl } : {}),
       isDev: env.nodeEnv !== 'production',
     },
   }),

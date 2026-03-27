@@ -156,6 +156,10 @@ a {
   border-color: rgba(60, 120, 183, 0.3);
 }
 
+.floating-alert-success {
+  border-color: rgba(44, 102, 88, 0.32);
+}
+
 .map-screen {
   position: relative;
   min-height: 100vh;

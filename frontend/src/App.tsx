@@ -3,13 +3,14 @@ import {
   useDeferredValue,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
-import type { FormEvent } from 'react'
+import type { ChangeEvent, FormEvent } from 'react'
 import { NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { Map as PigeonMap, Marker } from 'pigeon-maps'
 import { osm } from 'pigeon-maps/providers'
-import { generateUploadDropzone } from '@uploadthing/react'
+import { generateReactHelpers, generateUploadDropzone } from '@uploadthing/react'
 import '@uploadthing/react/styles.css'
 import { createListing, fetchAdminQueue, fetchListings, fetchSession, logout, moderateListing, submitReview } from './api'
 import { searchAddress, type GeocodingResult } from './geocoding'
@@ -45,6 +46,9 @@ const fallbackCategoryAccent = '#4a675f'
 const placeholderWebsiteHosts = new Set(['example.com', 'www.example.com'])
 
 const ListingUploadDropzone = generateUploadDropzone<any>({
+  url: '/api/uploadthing',
+})
+const { useUploadThing: useListingUpload } = generateReactHelpers<any>({
   url: '/api/uploadthing',
 })
 
@@ -964,12 +968,80 @@ function MapView(props: {
   const [pendingUploadPreviews, setPendingUploadPreviews] = useState<PendingUploadPreview[]>([])
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
   const [hoverRating, setHoverRating] = useState<number | null>(null)
+  const cameraInputRef = useRef<HTMLInputElement | null>(null)
+  const { startUpload: startCameraUpload } = useListingUpload('listingImage', {
+    headers: session?.csrfToken
+      ? {
+          'X-CSRF-Token': session.csrfToken,
+        }
+      : undefined,
+  })
 
   function clearPendingUploadPreviews() {
     setPendingUploadPreviews((current) => {
       current.forEach((file) => URL.revokeObjectURL(file.url))
       return []
     })
+  }
+
+  function setPendingFiles(files: File[]) {
+    clearPendingUploadPreviews()
+
+    if (files.length === 0) {
+      setUploadingPhotos(false)
+      return
+    }
+
+    setPendingUploadPreviews(
+      files.map((file) => ({
+        id: `${file.name}-${file.size}-${file.lastModified}`,
+        name: file.name,
+        url: URL.createObjectURL(file),
+      })),
+    )
+    setUploadingPhotos(true)
+    onFormStatusChange(t.uploadingPhotos)
+  }
+
+  function completeUploadedFiles(files: Array<{ key: string; url: string; name: string }>) {
+    clearPendingUploadPreviews()
+    setUploadingPhotos(false)
+    onUploadRefsChange(mergeUploadRefs(uploadRefs, files))
+
+    if (files.length > 0) {
+      onFormStatusChange(t.uploadSuccess)
+    }
+  }
+
+  function failUploadedFiles(error: Error) {
+    clearPendingUploadPreviews()
+    setUploadingPhotos(false)
+    onFormStatusChange(`${t.uploadError} ${error.message}`)
+  }
+
+  async function handleCameraFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ''
+
+    if (files.length === 0) {
+      return
+    }
+
+    setPendingFiles(files)
+
+    try {
+      const uploaded = await startCameraUpload(files)
+      const nextUploads =
+        uploaded?.map((file) => ({
+          key: file.serverData.key,
+          url: file.serverData.url,
+          name: file.serverData.name,
+        })) ?? []
+
+      completeUploadedFiles(nextUploads)
+    } catch (error) {
+      failUploadedFiles(error instanceof Error ? error : new Error(t.uploadError))
+    }
   }
 
   useEffect(() => {
@@ -1112,12 +1184,12 @@ function MapView(props: {
                 <div className="review-summary">
                   <span className="card-title">{t.reviews}</span>
                   <span>
-                    {getAverageRating(selectedListing)?.toFixed(1) ?? '0.0'} · {selectedListing.reviews.length}
+                    {getAverageRating(selectedListing)?.toFixed(1) ?? '0.0'} ({selectedListing.reviews.length})
                   </span>
                 </div>
 
                 {selectedListing.reviews.length === 0 ? <p>{t.noReviews}</p> : null}
-                {selectedListing.reviews.slice(0, 3).map((review) => (
+                {selectedListing.reviews.map((review) => (
                   <div key={review.id} className="review-card">
                     <div className="review-card-header">
                       <strong>{review.author.name}</strong>
@@ -1365,6 +1437,24 @@ function MapView(props: {
                 <div className="upload-copy">
                   <div className="card-title">{t.uploadPhotos}</div>
                   <p className="helper-text">{t.uploadHint}</p>
+                  <div className="upload-actions">
+                    <button
+                      type="button"
+                      className="ghost-button upload-camera-button"
+                      onClick={() => cameraInputRef.current?.click()}
+                    >
+                      {t.cameraButton}
+                    </button>
+                    <span className="helper-text">{t.cameraHint}</span>
+                  </div>
+                  <input
+                    ref={cameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="camera-input"
+                    onChange={handleCameraFileChange}
+                  />
                 </div>
                 <ListingUploadDropzone
                   endpoint="listingImage"
@@ -1377,22 +1467,7 @@ function MapView(props: {
                     allowedContent: () => t.uploadHint,
                   }}
                   onChange={(files) => {
-                    clearPendingUploadPreviews()
-
-                    if (files.length === 0) {
-                      setUploadingPhotos(false)
-                      return
-                    }
-
-                    setPendingUploadPreviews(
-                      files.map((file) => ({
-                        id: `${file.name}-${file.size}-${file.lastModified}`,
-                        name: file.name,
-                        url: URL.createObjectURL(file),
-                      })),
-                    )
-                    setUploadingPhotos(true)
-                    onFormStatusChange(t.uploadingPhotos)
+                    setPendingFiles(files)
                   }}
                   onClientUploadComplete={(
                     files: Array<{ serverData: UploadRef }>,
@@ -1403,17 +1478,10 @@ function MapView(props: {
                         name: file.serverData.name,
                       }))
 
-                    clearPendingUploadPreviews()
-                    setUploadingPhotos(false)
-                    onUploadRefsChange(mergeUploadRefs(uploadRefs, nextUploads))
-                    if (nextUploads.length > 0) {
-                      onFormStatusChange(t.uploadSuccess)
-                    }
+                    completeUploadedFiles(nextUploads)
                   }}
                   onUploadError={(error: Error) => {
-                    clearPendingUploadPreviews()
-                    setUploadingPhotos(false)
-                    onFormStatusChange(`${t.uploadError} ${error.message}`)
+                    failUploadedFiles(error)
                   }}
                 />
                 {pendingUploadPreviews.length > 0 || uploadRefs.length > 0 ? (

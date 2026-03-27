@@ -529,8 +529,7 @@ async function createSchema() {
       rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
       comment TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL,
-      CONSTRAINT listing_reviews_unique_author UNIQUE (listing_id, author_email)
+      updated_at TIMESTAMPTZ NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS pending_uploads (
@@ -549,6 +548,11 @@ async function createSchema() {
     CREATE INDEX IF NOT EXISTS listing_photos_listing_id_idx ON listing_photos (listing_id);
     CREATE INDEX IF NOT EXISTS listing_reviews_listing_id_idx ON listing_reviews (listing_id);
     CREATE INDEX IF NOT EXISTS pending_uploads_uploader_idx ON pending_uploads (uploader_user_id, consumed_at);
+  `)
+
+  await pool.query(`
+    ALTER TABLE listing_reviews
+    DROP CONSTRAINT IF EXISTS listing_reviews_unique_author;
   `)
 }
 
@@ -1449,14 +1453,6 @@ app.post('/api/listings/:listingId/reviews', writeLimiter, async (request, respo
           updated_at
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-        ON CONFLICT (listing_id, author_email)
-        DO UPDATE SET
-          author_user_id = EXCLUDED.author_user_id,
-          author_name = EXCLUDED.author_name,
-          author_role = EXCLUDED.author_role,
-          rating = EXCLUDED.rating,
-          comment = EXCLUDED.comment,
-          updated_at = EXCLUDED.updated_at
       `,
       [
         makeId('review'),

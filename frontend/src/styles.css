@@ -376,6 +376,21 @@ a {
   gap: 0.55rem;
 }
 
+.upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.upload-camera-button {
+  padding: 0.5rem 0.85rem;
+}
+
+.camera-input {
+  display: none;
+}
+
 .upload-preview-grid {
   display: flex;
   flex-wrap: wrap;

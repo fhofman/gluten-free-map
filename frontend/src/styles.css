@@ -373,19 +373,25 @@ a {
 }
 
 .upload-preview-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
-  gap: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
 }
 
 .upload-preview-card {
   margin: 0;
-  padding: 0.6rem;
+  width: 98px;
+  padding: 0.45rem;
   border-radius: 20px;
   border: 1px solid rgba(23, 49, 43, 0.1);
   background: rgba(255, 255, 255, 0.62);
   display: grid;
-  gap: 0.6rem;
+  gap: 0.45rem;
+}
+
+.upload-preview-card .photo-thumb {
+  height: 72px;
+  aspect-ratio: 1;
 }
 
 .upload-status-badge {
@@ -406,8 +412,8 @@ a {
 }
 
 .upload-preview-name {
-  font-size: 0.88rem;
-  line-height: 1.35;
+  font-size: 0.8rem;
+  line-height: 1.25;
   word-break: break-word;
 }
 

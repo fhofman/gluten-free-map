@@ -1088,7 +1088,6 @@ app.use(
     router: uploadRouter,
     config: {
       token: env.uploadthingToken,
-      callbackUrl: `${env.backendUrl}/api/uploadthing`,
       isDev: env.nodeEnv !== 'production',
     },
   }),

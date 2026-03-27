@@ -1,9 +1,18 @@
-import type { Language, ListingCategory, ListingKind } from './types'
+import type { KnownListingCategory, Language, ListingKind } from './types'
 
 export const defaultLanguage: Language = 'es'
 export const languageStorageKey = 'gfm.language.v1'
 
-export const categoryLabels: Record<Language, Record<ListingCategory, string>> = {
+export const physicalCategoryOptions: KnownListingCategory[] = [
+  'restaurant',
+  'store',
+  'market',
+  'productSpot',
+]
+
+export const onlineCategoryOptions: KnownListingCategory[] = ['onlineStore']
+
+export const categoryLabels: Record<Language, Record<KnownListingCategory, string>> = {
   es: {
     restaurant: 'Restaurante',
     store: 'Tienda',
@@ -74,6 +83,8 @@ export const copy = {
     tags: 'Tags',
     name: 'Nombre',
     category: 'Categoría',
+    categoryPlaceholder: 'Elegí o escribí una categoría',
+    categoryHint: 'Podés elegir una sugerencia o escribir una nueva.',
     websiteUrl: 'URL del sitio',
     language: 'Idioma',
     registerTitle: 'Registro de miembro',
@@ -90,6 +101,10 @@ export const copy = {
     uploadMissing:
       'UploadThing no está configurado. El formulario funciona, pero no vas a poder subir fotos.',
     signInToSubmit: 'Ingresá para sugerir lugares, productos o tiendas online.',
+    sessionExpiredToSubmit: 'Tu sesión venció. Ingresá de nuevo para enviar el lugar.',
+    sessionSyncError: 'No pude validar tu sesión antes de guardar. Recargá e intentá de nuevo.',
+    sessionBackendMismatch:
+      'El backend no recibió tu sesión al guardar. Recargá e ingresá de nuevo.',
     emptyMap: 'No hay resultados con esos filtros.',
     emptyCatalog: 'No hay sitios online cargados todavía.',
     emptyAdmin: 'No hay envíos pendientes ni verificaciones abiertas.',
@@ -145,6 +160,8 @@ export const copy = {
     tags: 'Tags',
     name: 'Name',
     category: 'Category',
+    categoryPlaceholder: 'Choose or type a category',
+    categoryHint: 'You can pick a suggestion or type a new one.',
     websiteUrl: 'Website URL',
     language: 'Language',
     registerTitle: 'Member registration',
@@ -161,6 +178,10 @@ export const copy = {
     uploadMissing:
       'UploadThing is not configured. The form still works, but photo uploads are disabled.',
     signInToSubmit: 'Sign in to suggest places, products, or online stores.',
+    sessionExpiredToSubmit: 'Your session expired. Sign in again to submit this listing.',
+    sessionSyncError: 'Could not validate your session before saving. Reload and try again.',
+    sessionBackendMismatch:
+      'The backend did not receive your session while saving. Reload and sign in again.',
     emptyMap: 'No results for the current filters.',
     emptyCatalog: 'No online stores have been added yet.',
     emptyAdmin: 'No pending submissions or verification tasks right now.',

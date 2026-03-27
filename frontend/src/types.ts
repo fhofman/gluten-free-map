@@ -1,12 +1,13 @@
 export type Language = 'es' | 'en'
 export type UserRole = 'admin' | 'member'
 export type ListingKind = 'physical' | 'online'
-export type ListingCategory =
+export type KnownListingCategory =
   | 'restaurant'
   | 'store'
   | 'market'
   | 'productSpot'
   | 'onlineStore'
+export type ListingCategory = KnownListingCategory | (string & {})
 export type ApprovalStatus = 'approved' | 'pending' | 'rejected'
 
 export interface SessionUser {

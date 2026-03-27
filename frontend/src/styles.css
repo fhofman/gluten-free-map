@@ -535,6 +535,12 @@ a {
   color: #5a7069;
 }
 
+.input-help {
+  margin-top: 0.35rem;
+  display: block;
+  color: #5a7069;
+}
+
 .panel-page {
   min-height: 100vh;
   padding: 8rem 1rem 2rem;

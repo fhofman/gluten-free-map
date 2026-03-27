@@ -250,13 +250,7 @@ const listingInputSchema = z
   .object({
     kind: z.enum(['physical', 'online']),
     name: z.string().trim().min(2).max(120),
-    category: z.enum([
-      'restaurant',
-      'store',
-      'market',
-      'productSpot',
-      'onlineStore',
-    ]),
+    category: z.string().trim().min(2).max(60),
     city: z.string().trim().max(120).optional().nullable(),
     address: z.string().trim().max(160).optional().nullable(),
     coordinates: z
@@ -958,6 +952,20 @@ async function seedListingsIfEmpty() {
   }
 }
 
+async function removePlaceholderWebsiteUrls() {
+  await pool.query(
+    `
+      UPDATE listings
+      SET
+        website_url = NULL,
+        updated_at = GREATEST(updated_at, NOW())
+      WHERE
+        source = 'seed'
+        AND website_url ~* '^https?://(www\\.)?example\\.com(/|$)'
+    `,
+  )
+}
+
 async function reserveUploadedPhotos(user, photoKeys) {
   if (photoKeys.length === 0) {
     return []
@@ -1485,6 +1493,7 @@ app.use((error, _request, response, _next) => {
 await createSchema()
 await migrateLegacyPlacesIfNeeded()
 await seedListingsIfEmpty()
+await removePlaceholderWebsiteUrls()
 
 app.listen(env.port, env.host, () => {
   console.log(`Backend listo en http://${env.host}:${env.port}`)

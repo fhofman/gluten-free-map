@@ -114,7 +114,7 @@ export const seedListings = [
     city: null,
     address: null,
     coordinates: null,
-    websiteUrl: 'https://example.com/tienda-sin-harina',
+    websiteUrl: null,
     description:
       'Tienda online con envios a todo el pais y foco en panificados, freezer y desayunos aptos.',
     tags: ['envios', 'ecommerce', 'freezer'],
@@ -139,7 +139,7 @@ export const seedListings = [
     city: null,
     address: null,
     coordinates: null,
-    websiteUrl: 'https://example.com/catalogo-celiaco-express',
+    websiteUrl: null,
     description:
       'Marketplace curado por la comunidad para encontrar snacks, mixes y marcas nuevas sin depender de una direccion fisica.',
     tags: ['marketplace', 'marcas nuevas', 'envios'],

@@ -13,19 +13,36 @@ import { generateUploadDropzone } from '@uploadthing/react'
 import '@uploadthing/react/styles.css'
 import { createListing, fetchAdminQueue, fetchListings, fetchSession, logout, moderateListing, submitReview } from './api'
 import { searchAddress, type GeocodingResult } from './geocoding'
-import { categoryLabels, copy, defaultLanguage, kindLabels, languageStorageKey } from './i18n'
-import type { CreateListingInput, Language, Listing, ListingCategory, ListingKind, SessionPayload } from './types'
+import {
+  categoryLabels,
+  copy,
+  defaultLanguage,
+  kindLabels,
+  languageStorageKey,
+  onlineCategoryOptions,
+  physicalCategoryOptions,
+} from './i18n'
+import type {
+  CreateListingInput,
+  KnownListingCategory,
+  Language,
+  Listing,
+  ListingKind,
+  SessionPayload,
+} from './types'
 import './styles.css'
 
 const defaultCenter: [number, number] = [-34.603722, -58.381592]
 
-const categoryAccent: Record<ListingCategory, string> = {
+const categoryAccent: Record<KnownListingCategory, string> = {
   restaurant: '#eb6f3d',
   store: '#0f766e',
   market: '#d5a021',
   productSpot: '#3c78b7',
   onlineStore: '#5b4fc9',
 }
+const fallbackCategoryAccent = '#4a675f'
+const placeholderWebsiteHosts = new Set(['example.com', 'www.example.com'])
 
 const ListingUploadDropzone = generateUploadDropzone<any>({
   url: '/api/uploadthing',
@@ -36,7 +53,7 @@ const ListingUploadDropzone = generateUploadDropzone<any>({
     }),
 })
 
-type CategoryFilter = ListingCategory | 'all'
+type CategoryFilter = string | 'all'
 
 interface UploadRef {
   key: string
@@ -47,7 +64,7 @@ interface UploadRef {
 interface ListingDraft {
   kind: ListingKind
   name: string
-  category: ListingCategory
+  category: string
   city: string
   address: string
   websiteUrl: string
@@ -59,11 +76,81 @@ interface ListingDraft {
   locationLabel: string
 }
 
-function createDraft(kind: ListingKind = 'physical'): ListingDraft {
+function isKnownCategory(category: string): category is KnownListingCategory {
+  return Object.hasOwn(categoryAccent, category)
+}
+
+function getCategoryAccent(category: string) {
+  return isKnownCategory(category) ? categoryAccent[category] : fallbackCategoryAccent
+}
+
+function humanizeCategory(category: string) {
+  const normalized = category
+    .replace(/([a-z\u00e0-\u00ff])([A-Z])/g, '$1 $2')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) {
+    return category
+  }
+
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1)
+}
+
+function getCategoryLabel(language: Language, category: string) {
+  return isKnownCategory(category) ? categoryLabels[language][category] : humanizeCategory(category)
+}
+
+function normalizeCategoryInput(kind: ListingKind, value: string) {
+  const normalized = value.trim().replace(/\s+/g, ' ')
+  const fallback = kind === 'online' ? 'onlineStore' : 'restaurant'
+
+  if (!normalized) {
+    return fallback
+  }
+
+  const knownCategories = kind === 'online' ? onlineCategoryOptions : physicalCategoryOptions
+  const folded = normalized.toLocaleLowerCase('es-AR')
+
+  for (const category of knownCategories) {
+    const aliases = [
+      category,
+      categoryLabels.es[category],
+      categoryLabels.en[category],
+    ]
+
+    if (aliases.some((alias) => alias.toLocaleLowerCase('es-AR') === folded)) {
+      return category
+    }
+  }
+
+  return normalized
+}
+
+function hasPublicWebsiteUrl(value: string | null): value is string {
+  if (!value) {
+    return false
+  }
+
+  try {
+    const url = new URL(value)
+    return !placeholderWebsiteHosts.has(url.hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
+function createDraft(
+  kind: ListingKind = 'physical',
+  language: Language = defaultLanguage,
+): ListingDraft {
+  const defaultCategory = kind === 'online' ? categoryLabels[language].onlineStore : categoryLabels[language].restaurant
+
   return {
     kind,
     name: '',
-    category: kind === 'online' ? 'onlineStore' : 'restaurant',
+    category: defaultCategory,
     city: '',
     address: '',
     websiteUrl: '',
@@ -124,13 +211,12 @@ function App() {
   const [globalError, setGlobalError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all')
-  const [verifiedOnly, setVerifiedOnly] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [mapCenter, setMapCenter] = useState<[number, number]>(defaultCenter)
   const [mapZoom, setMapZoom] = useState(12)
   const [didAutoLocateMobile, setDidAutoLocateMobile] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
-  const [draft, setDraft] = useState<ListingDraft>(() => createDraft())
+  const [draft, setDraft] = useState<ListingDraft>(() => createDraft('physical', language))
   const [addressQuery, setAddressQuery] = useState('')
   const [addressResults, setAddressResults] = useState<GeocodingResult[]>([])
   const [addressStatus, setAddressStatus] = useState<string | null>(null)
@@ -199,7 +285,7 @@ function App() {
       return false
     }
 
-    if (verifiedOnly && !listing.verified) {
+    if (!listing.verified) {
       return false
     }
 
@@ -267,14 +353,33 @@ function App() {
     )
   }, [filteredOnlineListings, language])
 
+  const physicalCategoryFilterOptions = useMemo(() => {
+    const customCategories = Array.from(
+      new Set(
+        approvedPhysicalListings
+          .map((listing) => listing.category)
+          .filter((category) => !isKnownCategory(category)),
+      ),
+    ).sort((left, right) =>
+      getCategoryLabel(language, left).localeCompare(
+        getCategoryLabel(language, right),
+        language === 'es' ? 'es' : 'en',
+      ),
+    )
+
+    return [...physicalCategoryOptions, ...customCategories]
+  }, [approvedPhysicalListings, language])
+
   async function refreshSession() {
     setLoadingSession(true)
 
     try {
       const nextSession = await fetchSession()
       setSession(nextSession)
+      return nextSession
     } catch (error) {
       setGlobalError(error instanceof Error ? error.message : 'No pude leer la sesión.')
+      return null
     } finally {
       setLoadingSession(false)
     }
@@ -307,7 +412,7 @@ function App() {
   }
 
   function handleOpenForm(kind: ListingKind) {
-    setDraft(createDraft(kind))
+    setDraft(createDraft(kind, language))
     setAddressQuery('')
     setAddressResults([])
     setAddressStatus(null)
@@ -393,10 +498,18 @@ function App() {
     setFormStatus(null)
 
     try {
+      const activeSession = await fetchSession()
+      setSession(activeSession)
+
+      if (!activeSession.user) {
+        setFormStatus(t.sessionExpiredToSubmit)
+        return
+      }
+
       const payload: CreateListingInput = {
         kind: draft.kind,
         name: draft.name.trim(),
-        category: draft.kind === 'online' ? 'onlineStore' : draft.category,
+        category: normalizeCategoryInput(draft.kind, draft.category),
         city: draft.city.trim(),
         address: draft.address.trim(),
         coordinates: draft.coordinates,
@@ -405,19 +518,19 @@ function App() {
         tags: splitCommaList(draft.tagsText),
         products: splitCommaList(draft.productsText),
         dedicatedKitchen: false,
-        verified: session.user.role === 'admin' ? draft.verified : false,
+        verified: activeSession.user.role === 'admin' ? draft.verified : false,
         photoKeys: uploadRefs.map((photo) => photo.key),
       }
 
-      await createListing(payload, session.csrfToken)
+      await createListing(payload, activeSession.csrfToken)
       await refreshListings()
 
-      if (session.user.role === 'admin') {
+      if (activeSession.user.role === 'admin') {
         await refreshPendingListings()
       }
 
       setFormOpen(false)
-      setDraft(createDraft())
+      setDraft(createDraft('physical', language))
       setUploadRefs([])
       setFormStatus(
         language === 'es'
@@ -425,7 +538,17 @@ function App() {
           : 'Listing submitted successfully.',
       )
     } catch (error) {
-      setFormStatus(error instanceof Error ? error.message : 'Could not create listing.')
+      if (error instanceof Error) {
+        if (error.message === 'Inicia sesion para continuar.') {
+          setFormStatus(t.sessionBackendMismatch)
+          return
+        }
+
+        setFormStatus(error.message)
+        return
+      }
+
+      setFormStatus(t.sessionSyncError)
     } finally {
       setFormPending(false)
     }
@@ -565,8 +688,7 @@ function App() {
               }
               categoryFilter={categoryFilter}
               onCategoryFilterChange={setCategoryFilter}
-              verifiedOnly={verifiedOnly}
-              onVerifiedOnlyChange={setVerifiedOnly}
+              categoryOptions={physicalCategoryFilterOptions}
               mapCenter={mapCenter}
               mapZoom={mapZoom}
               onMapCenterChange={setMapCenter}
@@ -655,8 +777,7 @@ function MapView(props: {
   onSearchChange: (value: string) => void
   categoryFilter: CategoryFilter
   onCategoryFilterChange: (value: CategoryFilter) => void
-  verifiedOnly: boolean
-  onVerifiedOnlyChange: (value: boolean) => void
+  categoryOptions: string[]
   mapCenter: [number, number]
   mapZoom: number
   onMapCenterChange: (value: [number, number]) => void
@@ -698,8 +819,7 @@ function MapView(props: {
     onSearchChange,
     categoryFilter,
     onCategoryFilterChange,
-    verifiedOnly,
-    onVerifiedOnlyChange,
+    categoryOptions,
     mapCenter,
     mapZoom,
     onMapCenterChange,
@@ -783,21 +903,12 @@ function MapView(props: {
                     className="compact-select"
                   >
                     <option value="all">{t.allLabel}</option>
-                    {(['restaurant', 'store', 'market', 'productSpot'] as ListingCategory[]).map((category) => (
+                    {categoryOptions.map((category) => (
                       <option key={category} value={category}>
-                        {categoryLabels[language][category]}
+                        {getCategoryLabel(language, category)}
                       </option>
                     ))}
                   </select>
-                </label>
-
-                <label className="toggle-row compact-toggle">
-                  <input
-                    type="checkbox"
-                    checked={verifiedOnly}
-                    onChange={(event) => onVerifiedOnlyChange(event.target.checked)}
-                  />
-                  <span>{t.verified}</span>
                 </label>
               </div>
 
@@ -827,8 +938,8 @@ function MapView(props: {
           <div className="detail-popup">
             <div className="popup-heading">
               <div>
-                <span className="listing-meta" style={{ color: categoryAccent[selectedListing.category] }}>
-                  {categoryLabels[language][selectedListing.category]}
+                <span className="listing-meta" style={{ color: getCategoryAccent(selectedListing.category) }}>
+                  {getCategoryLabel(language, selectedListing.category)}
                 </span>
                 <h2>{selectedListing.name}</h2>
               </div>
@@ -842,7 +953,7 @@ function MapView(props: {
             <div className="popup-body">
               <p>{selectedListing.description}</p>
               {selectedListing.address ? <p>{selectedListing.address}</p> : null}
-              {selectedListing.websiteUrl ? (
+              {hasPublicWebsiteUrl(selectedListing.websiteUrl) ? (
                 <a href={selectedListing.websiteUrl} target="_blank" rel="noreferrer" className="external-link">
                   {t.website}
                 </a>
@@ -935,7 +1046,7 @@ function MapView(props: {
               <Marker
                 key={listing.id}
                 anchor={listing.coordinates}
-                color={categoryAccent[listing.category]}
+                color={getCategoryAccent(listing.category)}
                 width={selectedListing?.id === listing.id ? 56 : 42}
                 onClick={({ event }) => {
                   event.stopPropagation?.()
@@ -972,19 +1083,23 @@ function MapView(props: {
 
               <label>
                 {t.category}
-                <select
+                <input
+                  list={draft.kind === 'online' ? 'online-category-options' : 'physical-category-options'}
                   value={draft.category}
-                  onChange={(event) => onDraftChange('category', event.target.value as ListingCategory)}
-                >
-                  {(draft.kind === 'online'
-                    ? (['onlineStore'] as ListingCategory[])
-                    : (['restaurant', 'store', 'market', 'productSpot'] as ListingCategory[])
-                  ).map((category) => (
-                    <option key={category} value={category}>
-                      {categoryLabels[language][category]}
-                    </option>
+                  onChange={(event) => onDraftChange('category', event.target.value)}
+                  placeholder={t.categoryPlaceholder}
+                />
+                <datalist id="physical-category-options">
+                  {physicalCategoryOptions.map((category) => (
+                    <option key={category} value={categoryLabels[language][category]} />
                   ))}
-                </select>
+                </datalist>
+                <datalist id="online-category-options">
+                  {onlineCategoryOptions.map((category) => (
+                    <option key={category} value={categoryLabels[language][category]} />
+                  ))}
+                </datalist>
+                <small className="input-help">{t.categoryHint}</small>
               </label>
 
               {draft.kind === 'physical' ? (
@@ -1188,7 +1303,7 @@ function CatalogView({
             <div className="catalog-grid">
               {listings.map((listing) => (
                 <article key={listing.id} className="catalog-card">
-                  <span className="listing-meta">{categoryLabels[language][listing.category]}</span>
+                  <span className="listing-meta">{getCategoryLabel(language, listing.category)}</span>
                   <h3>{listing.name}</h3>
                   <p>{listing.description}</p>
                   <div className="tag-cloud">
@@ -1199,7 +1314,7 @@ function CatalogView({
                     ))}
                   </div>
                   <div className="action-row">
-                    {listing.websiteUrl ? (
+                    {hasPublicWebsiteUrl(listing.websiteUrl) ? (
                       <a href={listing.websiteUrl} target="_blank" rel="noreferrer" className="solid-button">
                         {t.website}
                       </a>

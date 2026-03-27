@@ -12,6 +12,7 @@ import { Pool } from 'pg'
 import { WorkOS } from '@workos-inc/node'
 import { z } from 'zod'
 import { createRouteHandler as createUploadthingRouteHandler, createUploadthing } from 'uploadthing/express'
+import { UploadThingError } from 'uploadthing/server'
 import { seedListings } from './seed-data.mjs'
 
 const VALID_KINDS = new Set(['physical', 'online'])
@@ -1028,7 +1029,18 @@ async function consumeUploadedPhotos(client, photoKeys) {
   )
 }
 
-const uploadThing = createUploadthing()
+const uploadThing = createUploadthing({
+  errorFormatter: (error) => ({
+    code: error.code,
+    message: error.message,
+    cause:
+      error.cause instanceof Error
+        ? error.cause.message
+        : typeof error.cause === 'string'
+          ? error.cause
+          : undefined,
+  }),
+})
 
 const uploadRouter = {
   listingImage: uploadThing(
@@ -1043,40 +1055,59 @@ const uploadRouter = {
     },
   )
     .middleware(async ({ req }) => {
-      ensureUploadthingConfigured()
-      const session = await requireSession(req)
+      try {
+        ensureUploadthingConfigured()
+        const session = await requireSession(req)
 
-      return {
-        userId: session.user.id,
-        email: session.user.email,
+        return {
+          userId: session.user.id,
+          email: session.user.email,
+        }
+      } catch (error) {
+        throw new UploadThingError({
+          code: 'FORBIDDEN',
+          message:
+            error instanceof Error && error.message
+              ? error.message
+              : 'No pude validar tu sesión para subir fotos.',
+          cause: error,
+        })
       }
     })
     .onUploadComplete(async ({ metadata, file }) => {
-      await pool.query(
-        `
-          INSERT INTO pending_uploads (
-            file_key,
-            file_url,
-            file_name,
-            uploader_user_id,
-            uploader_email,
-            created_at
-          )
-          VALUES ($1, $2, $3, $4, $5, NOW())
-          ON CONFLICT (file_key)
-          DO UPDATE SET
-            file_url = EXCLUDED.file_url,
-            file_name = EXCLUDED.file_name,
-            uploader_user_id = EXCLUDED.uploader_user_id,
-            uploader_email = EXCLUDED.uploader_email
-        `,
-        [file.key, file.ufsUrl, file.name, metadata.userId, metadata.email],
-      )
+      try {
+        await pool.query(
+          `
+            INSERT INTO pending_uploads (
+              file_key,
+              file_url,
+              file_name,
+              uploader_user_id,
+              uploader_email,
+              created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, NOW())
+            ON CONFLICT (file_key)
+            DO UPDATE SET
+              file_url = EXCLUDED.file_url,
+              file_name = EXCLUDED.file_name,
+              uploader_user_id = EXCLUDED.uploader_user_id,
+              uploader_email = EXCLUDED.uploader_email
+          `,
+          [file.key, file.ufsUrl, file.name, metadata.userId, metadata.email],
+        )
 
-      return {
-        key: file.key,
-        url: file.ufsUrl,
-        name: file.name,
+        return {
+          key: file.key,
+          url: file.ufsUrl,
+          name: file.name,
+        }
+      } catch (error) {
+        throw new UploadThingError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'No pude registrar la foto subida.',
+          cause: error,
+        })
       }
     }),
 }

@@ -963,6 +963,7 @@ function MapView(props: {
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false)
   const [pendingUploadPreviews, setPendingUploadPreviews] = useState<PendingUploadPreview[]>([])
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
+  const [hoverRating, setHoverRating] = useState<number | null>(null)
 
   function clearPendingUploadPreviews() {
     setPendingUploadPreviews((current) => {
@@ -977,6 +978,10 @@ function MapView(props: {
       setUploadingPhotos(false)
     }
   }, [formOpen])
+
+  useEffect(() => {
+    setHoverRating(null)
+  }, [selectedListing?.id])
 
   useEffect(
     () => () => {
@@ -1124,18 +1129,36 @@ function MapView(props: {
                 ))}
 
                 <form className="review-form" onSubmit={onSubmitReview}>
-                  <label>
+                  <label className="rating-field">
                     {t.ratingLabel}
-                    <select
-                      value={reviewRating}
-                      onChange={(event) => onReviewRatingChange(Number.parseInt(event.target.value, 10))}
+                    <div
+                      className="star-rating"
+                      role="radiogroup"
+                      aria-label={t.ratingLabel}
+                      onMouseLeave={() => setHoverRating(null)}
                     >
-                      {[5, 4, 3, 2, 1].map((value) => (
-                        <option key={value} value={value}>
-                          {value}
-                        </option>
-                      ))}
-                    </select>
+                      {[1, 2, 3, 4, 5].map((value) => {
+                        const activeValue = hoverRating ?? reviewRating
+
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            role="radio"
+                            aria-checked={reviewRating === value}
+                            aria-label={`${value} / 5`}
+                            className={`star-button ${activeValue >= value ? 'star-button-active' : ''}`}
+                            onClick={() => onReviewRatingChange(value)}
+                            onMouseEnter={() => setHoverRating(value)}
+                            onFocus={() => setHoverRating(value)}
+                            onBlur={() => setHoverRating(null)}
+                          >
+                            ★
+                          </button>
+                        )
+                      })}
+                      <span className="star-rating-value">{reviewRating}/5</span>
+                    </div>
                   </label>
                   <label>
                     {t.commentLabel}

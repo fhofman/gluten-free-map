@@ -526,7 +526,6 @@ a {
 .drawer-grid input,
 .drawer-grid textarea,
 .drawer-grid select,
-.review-form select,
 .review-form textarea,
 .address-form input {
   width: 100%;
@@ -588,6 +587,45 @@ a {
 
 .helper-text {
   margin: 0;
+  color: #5a7069;
+}
+
+.rating-field {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.star-rating {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  flex-wrap: wrap;
+}
+
+.star-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(23, 49, 43, 0.22);
+  font-size: 2rem;
+  line-height: 1;
+  border-radius: 0;
+}
+
+.star-button:hover,
+.star-button:focus-visible {
+  transform: none;
+  color: #d5a021;
+  outline: none;
+}
+
+.star-button-active {
+  color: #d5a021;
+}
+
+.star-rating-value {
+  margin-left: 0.4rem;
+  font-size: 0.95rem;
   color: #5a7069;
 }
 

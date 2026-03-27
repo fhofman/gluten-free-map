@@ -13,6 +13,7 @@ import { WorkOS } from '@workos-inc/node'
 import { z } from 'zod'
 import { createRouteHandler as createUploadthingRouteHandler, createUploadthing } from 'uploadthing/express'
 import { UploadThingError } from 'uploadthing/server'
+import { buildPoolConfig } from './db.mjs'
 import { seedListings } from './seed-data.mjs'
 
 const VALID_KINDS = new Set(['physical', 'online'])
@@ -96,9 +97,7 @@ if (!env.databaseUrl) {
   throw new Error('DATABASE_URL es obligatorio para iniciar el backend.')
 }
 
-const pool = new Pool({
-  connectionString: env.databaseUrl,
-})
+const pool = new Pool(buildPoolConfig(env.databaseUrl))
 
 pool.on('error', (error) => {
   console.error('Postgres error:', error)

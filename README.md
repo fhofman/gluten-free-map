@@ -99,6 +99,8 @@ DATABASE_URL=postgresql://... node backend/scripts/create-admin.mjs admin@exampl
 
 El script deja ese email con rol `admin` en la tabla `users`. Cuando ese usuario entre por WorkOS, conservará el rol.
 
+Si corrés el script desde tu máquina contra la URL externa de Render, agregá `?sslmode=require` al `DATABASE_URL` o definí `PGSSLMODE=require`.
+
 ## Deploy en Render
 
 El deploy en Render queda resuelto con un solo servicio Node en [`render.yaml`](./render.yaml):

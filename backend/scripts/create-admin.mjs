@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import { Pool } from 'pg'
+import { buildPoolConfig } from '../db.mjs'
 
 const email = `${process.argv[2] ?? ''}`.trim().toLowerCase()
 const name = `${process.argv[3] ?? ''}`.trim() || 'Admin Gluten Free Map'
@@ -13,9 +14,7 @@ if (!email || !email.includes('@')) {
   throw new Error('Uso: node backend/scripts/create-admin.mjs admin@example.com "Nombre Admin"')
 }
 
-const pool = new Pool({
-  connectionString: databaseUrl,
-})
+const pool = new Pool(buildPoolConfig(databaseUrl))
 
 const now = new Date().toISOString()
 

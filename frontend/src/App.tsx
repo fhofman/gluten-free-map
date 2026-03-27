@@ -54,7 +54,6 @@ interface ListingDraft {
   description: string
   tagsText: string
   productsText: string
-  dedicatedKitchen: boolean
   verified: boolean
   coordinates: [number, number] | null
   locationLabel: string
@@ -71,7 +70,6 @@ function createDraft(kind: ListingKind = 'physical'): ListingDraft {
     description: '',
     tagsText: '',
     productsText: '',
-    dedicatedKitchen: false,
     verified: false,
     coordinates: null,
     locationLabel: '',
@@ -130,6 +128,7 @@ function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [mapCenter, setMapCenter] = useState<[number, number]>(defaultCenter)
   const [mapZoom, setMapZoom] = useState(12)
+  const [didAutoLocateMobile, setDidAutoLocateMobile] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
   const [draft, setDraft] = useState<ListingDraft>(() => createDraft())
   const [addressQuery, setAddressQuery] = useState('')
@@ -160,6 +159,33 @@ function App() {
       void refreshPendingListings()
     }
   }, [location.pathname, session?.user?.role])
+
+  useEffect(() => {
+    if (didAutoLocateMobile || location.pathname !== '/' || typeof window === 'undefined') {
+      return
+    }
+
+    if (!window.matchMedia('(max-width: 768px)').matches || !navigator.geolocation) {
+      setDidAutoLocateMobile(true)
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setMapCenter([coords.latitude, coords.longitude])
+        setMapZoom(14)
+        setDidAutoLocateMobile(true)
+      },
+      () => {
+        setDidAutoLocateMobile(true)
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 60_000,
+        timeout: 8_000,
+      },
+    )
+  }, [didAutoLocateMobile, location.pathname])
 
   const approvedPhysicalListings = listings.filter(
     (listing) => listing.kind === 'physical' && listing.approvalStatus === 'approved',
@@ -378,7 +404,7 @@ function App() {
         description: draft.description.trim(),
         tags: splitCommaList(draft.tagsText),
         products: splitCommaList(draft.productsText),
-        dedicatedKitchen: draft.kind === 'physical' ? draft.dedicatedKitchen : false,
+        dedicatedKitchen: false,
         verified: session.user.role === 'admin' ? draft.verified : false,
         photoKeys: uploadRefs.map((photo) => photo.key),
       }
@@ -776,13 +802,18 @@ function MapView(props: {
               </div>
 
               <div className="action-row">
-                <button type="button" className="solid-button" onClick={() => onOpenForm('physical')}>
-                  {t.addPhysical}
-                </button>
                 <button type="button" className="ghost-button" onClick={() => onOpenForm('online')}>
                   {t.addOnline}
                 </button>
               </div>
+            </div>
+          ) : null}
+
+          {session?.user ? (
+            <div className="map-quick-actions">
+              <button type="button" className="solid-button quick-add-button" onClick={() => onOpenForm('physical')}>
+                {t.suggestPlace}
+              </button>
             </div>
           ) : null}
 
@@ -802,7 +833,6 @@ function MapView(props: {
                 <h2>{selectedListing.name}</h2>
               </div>
               <div className="detail-header-actions">
-                <StatusPills language={language} listing={selectedListing} />
                 <button type="button" className="ghost-button detail-close-button" onClick={onClearSelectedListing}>
                   {t.close}
                 </button>
@@ -1050,16 +1080,6 @@ function MapView(props: {
             ) : null}
 
             <div className="toggle-cluster">
-              {draft.kind === 'physical' ? (
-                <label className="toggle-row">
-                  <input
-                    type="checkbox"
-                    checked={draft.dedicatedKitchen}
-                    onChange={(event) => onDraftChange('dedicatedKitchen', event.target.checked)}
-                  />
-                  <span>{t.dedicatedKitchen}</span>
-                </label>
-              ) : null}
               {session?.user?.role === 'admin' ? (
                 <label className="toggle-row">
                   <input

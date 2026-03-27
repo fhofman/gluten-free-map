@@ -227,7 +227,8 @@ a {
 }
 
 .advanced-search-panel,
-.filter-grid {
+.filter-grid,
+.map-quick-actions {
   display: grid;
   gap: 0.8rem;
 }
@@ -309,6 +310,12 @@ a {
   background: linear-gradient(135deg, #17312b, #2c6658);
   border-color: transparent;
   color: #f7f3ea;
+}
+
+.quick-add-button {
+  width: fit-content;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.86rem;
 }
 
 .icon-svg {
@@ -487,11 +494,14 @@ a {
   left: 50%;
   bottom: 1rem;
   transform: translateX(-50%);
-  width: min(940px, calc(100vw - 2rem));
+  width: min(700px, calc(100vw - 2rem));
+  max-height: calc(100vh - 8rem);
 }
 
 .drawer-card {
-  padding: 1.25rem;
+  padding: 0.95rem;
+  max-height: inherit;
+  overflow: auto;
 }
 
 .toggle-row,
@@ -603,6 +613,7 @@ a {
     right: 1rem;
     transform: none;
     width: auto;
+    max-height: calc(100vh - 8.5rem);
   }
 }
 
@@ -650,5 +661,9 @@ a {
 
   .compact-toggle {
     padding-top: 0;
+  }
+
+  .quick-add-button {
+    width: 100%;
   }
 }

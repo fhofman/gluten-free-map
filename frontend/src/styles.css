@@ -401,6 +401,10 @@ a {
   text-transform: uppercase;
 }
 
+.upload-status-badge-uploading {
+  background: rgba(213, 160, 33, 0.18);
+}
+
 .upload-preview-name {
   font-size: 0.88rem;
   line-height: 1.35;

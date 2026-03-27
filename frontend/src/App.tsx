@@ -61,6 +61,12 @@ interface UploadRef {
   name: string
 }
 
+interface PendingUploadPreview {
+  id: string
+  name: string
+  url: string
+}
+
 interface ListingDraft {
   kind: ListingKind
   name: string
@@ -168,6 +174,52 @@ function splitCommaList(value: string) {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean)
+}
+
+function validateDraft(draft: ListingDraft, language: Language) {
+  if (draft.name.trim().length < 2) {
+    return language === 'es' ? 'Completá el nombre.' : 'Add a name.'
+  }
+
+  if (normalizeCategoryInput(draft.kind, draft.category).trim().length < 2) {
+    return language === 'es' ? 'Elegí o escribí una categoría.' : 'Choose or type a category.'
+  }
+
+  if (draft.description.trim().length < 12) {
+    return language === 'es'
+      ? 'La descripción tiene que tener al menos 12 caracteres.'
+      : 'Description must be at least 12 characters long.'
+  }
+
+  if (draft.kind === 'physical') {
+    if (!draft.coordinates) {
+      return language === 'es'
+        ? 'Seleccioná una ubicación en el mapa para el lugar físico.'
+        : 'Pick a map location for the physical place.'
+    }
+
+    if (draft.city.trim().length < 2) {
+      return language === 'es' ? 'Completá la ciudad o barrio.' : 'Fill in the city or area.'
+    }
+
+    if (draft.address.trim().length < 3) {
+      return language === 'es' ? 'Completá la dirección.' : 'Fill in the address.'
+    }
+
+    return null
+  }
+
+  if (!draft.websiteUrl.trim()) {
+    return language === 'es' ? 'Completá la URL del sitio web.' : 'Add the website URL.'
+  }
+
+  try {
+    new URL(draft.websiteUrl.trim())
+  } catch {
+    return language === 'es' ? 'Completá una URL válida.' : 'Enter a valid URL.'
+  }
+
+  return null
 }
 
 function mergeUploadRefs(current: UploadRef[], incoming: UploadRef[]) {
@@ -501,6 +553,13 @@ function App() {
 
     if (!session.csrfToken) {
       setFormStatus('CSRF token missing.')
+      return
+    }
+
+    const validationError = validateDraft(draft, language)
+
+    if (validationError) {
+      setFormStatus(validationError)
       return
     }
 
@@ -867,6 +926,29 @@ function MapView(props: {
   } = props
   const t = copy[language]
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false)
+  const [pendingUploadPreviews, setPendingUploadPreviews] = useState<PendingUploadPreview[]>([])
+  const [uploadingPhotos, setUploadingPhotos] = useState(false)
+
+  function clearPendingUploadPreviews() {
+    setPendingUploadPreviews((current) => {
+      current.forEach((file) => URL.revokeObjectURL(file.url))
+      return []
+    })
+  }
+
+  useEffect(() => {
+    if (!formOpen) {
+      clearPendingUploadPreviews()
+      setUploadingPhotos(false)
+    }
+  }, [formOpen])
+
+  useEffect(
+    () => () => {
+      pendingUploadPreviews.forEach((file) => URL.revokeObjectURL(file.url))
+    },
+    [pendingUploadPreviews],
+  )
 
   return (
     <section className="map-screen">
@@ -1231,6 +1313,29 @@ function MapView(props: {
                   headers={{
                     'X-CSRF-Token': session.csrfToken,
                   }}
+                  content={{
+                    label: () => t.uploadDropLabel,
+                    button: () => t.uploadButton,
+                    allowedContent: () => t.uploadHint,
+                  }}
+                  onChange={(files) => {
+                    clearPendingUploadPreviews()
+
+                    if (files.length === 0) {
+                      setUploadingPhotos(false)
+                      return
+                    }
+
+                    setPendingUploadPreviews(
+                      files.map((file) => ({
+                        id: `${file.name}-${file.size}-${file.lastModified}`,
+                        name: file.name,
+                        url: URL.createObjectURL(file),
+                      })),
+                    )
+                    setUploadingPhotos(true)
+                    onFormStatusChange(t.uploadingPhotos)
+                  }}
                   onClientUploadComplete={(
                     files: Array<{ serverData: UploadRef }>,
                   ) => {
@@ -1240,18 +1345,32 @@ function MapView(props: {
                         name: file.serverData.name,
                       }))
 
+                    clearPendingUploadPreviews()
+                    setUploadingPhotos(false)
                     onUploadRefsChange(mergeUploadRefs(uploadRefs, nextUploads))
                     if (nextUploads.length > 0) {
                       onFormStatusChange(t.uploadSuccess)
                     }
                   }}
                   onUploadError={(error: Error) => {
-                    onUploadRefsChange([])
+                    clearPendingUploadPreviews()
+                    setUploadingPhotos(false)
                     onFormStatusChange(`${t.uploadError} ${error.message}`)
                   }}
                 />
-                {uploadRefs.length > 0 ? (
+                {pendingUploadPreviews.length > 0 || uploadRefs.length > 0 ? (
                   <div className="upload-preview-grid">
+                    {pendingUploadPreviews.map((file) => (
+                      <figure key={file.id} className="upload-preview-card">
+                        <img src={file.url} alt={file.name} className="photo-thumb" />
+                        <figcaption className="upload-preview-meta">
+                          <span className="upload-status-badge upload-status-badge-uploading">
+                            {t.uploadingLabel}
+                          </span>
+                          <span className="upload-preview-name">{file.name}</span>
+                        </figcaption>
+                      </figure>
+                    ))}
                     {uploadRefs.map((file) => (
                       <figure key={file.key} className="upload-preview-card">
                         <img src={file.url} alt={file.name} className="photo-thumb" />
@@ -1267,8 +1386,8 @@ function MapView(props: {
             ) : null}
 
             <div className="action-row">
-              <button type="submit" className="solid-button" disabled={formPending}>
-                {formPending ? '...' : t.save}
+              <button type="submit" className="solid-button" disabled={formPending || uploadingPhotos}>
+                {formPending ? '...' : uploadingPhotos ? t.uploadingLabel : t.save}
               </button>
             </div>
             {formStatus ? <p className="helper-text">{formStatus}</p> : null}

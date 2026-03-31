@@ -169,81 +169,6 @@ a {
   height: 100vh;
 }
 
-.map-listing-marker {
-  position: relative;
-  width: 48px;
-  height: 56px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  pointer-events: auto;
-  cursor: pointer;
-  transition: transform 140ms ease;
-}
-
-.map-listing-marker-with-rating {
-  height: 74px;
-}
-
-.map-listing-marker:hover,
-.map-listing-marker-selected {
-  transform: translateY(-2px);
-}
-
-.map-listing-marker:focus-visible {
-  outline: 2px solid rgba(23, 49, 43, 0.32);
-  outline-offset: 4px;
-  border-radius: 28px;
-}
-
-.map-listing-marker-rating {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.22rem;
-  padding: 0.2rem 0.5rem;
-  border-radius: 999px;
-  background: rgba(250, 246, 237, 0.96);
-  border: 1px solid rgba(23, 49, 43, 0.14);
-  box-shadow: 0 10px 22px rgba(23, 49, 43, 0.16);
-  color: #17312b;
-  font-size: 0.74rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.map-listing-marker-pin {
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  width: 2.05rem;
-  height: 2.05rem;
-  transform: translateX(-50%) rotate(-45deg);
-  border-radius: 70% 70% 70% 0;
-  background: var(--marker-accent);
-  border: 3px solid rgba(250, 246, 237, 0.96);
-  box-shadow: 0 12px 24px rgba(23, 49, 43, 0.2);
-}
-
-.map-listing-marker-selected .map-listing-marker-pin {
-  width: 2.25rem;
-  height: 2.25rem;
-}
-
-.map-listing-marker-core {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0.72rem;
-  height: 0.72rem;
-  transform: translate(-50%, -50%) rotate(45deg);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.96);
-}
-
 .map-search-shell,
 .map-overlay-right {
   position: fixed;
@@ -808,20 +733,6 @@ a {
 }
 
 @media (max-width: 640px) {
-  .map-listing-marker {
-    width: 44px;
-    height: 52px;
-  }
-
-  .map-listing-marker-with-rating {
-    height: 68px;
-  }
-
-  .map-listing-marker-rating {
-    font-size: 0.68rem;
-    padding: 0.16rem 0.42rem;
-  }
-
   .brand-cloud,
   .utility-cloud {
     position: absolute;

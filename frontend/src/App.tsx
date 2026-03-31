@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { CSSProperties, ChangeEvent, FormEvent } from 'react'
+import type { ChangeEvent, FormEvent } from 'react'
 import { NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { Map as PigeonMap, Marker } from 'pigeon-maps'
 import { osm } from 'pigeon-maps/providers'
@@ -267,6 +267,75 @@ function formatRatingValue(value: number, language: Language) {
   }).format(value)
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
+}
+
+function latRad(lat: number) {
+  const sin = Math.sin((lat * Math.PI) / 180)
+  const radians = Math.log((1 + sin) / (1 - sin)) / 2
+  return clamp(radians, -Math.PI, Math.PI) / 2
+}
+
+function zoomForFraction(mapPx: number, fraction: number) {
+  if (!Number.isFinite(fraction) || fraction <= 0) {
+    return 16
+  }
+
+  return Math.floor(Math.log(mapPx / 256 / fraction) / Math.LN2)
+}
+
+function getViewportForListings(listings: Listing[]) {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  const coordinates = listings
+    .map((listing) => listing.coordinates)
+    .filter((value): value is [number, number] => value !== null)
+
+  if (coordinates.length === 0) {
+    return null
+  }
+
+  if (coordinates.length === 1) {
+    return {
+      center: coordinates[0],
+      zoom: 14,
+    }
+  }
+
+  const latitudes = coordinates.map(([lat]) => lat)
+  const longitudes = coordinates.map(([, lng]) => lng)
+  const minLat = Math.min(...latitudes)
+  const maxLat = Math.max(...latitudes)
+  const minLng = Math.min(...longitudes)
+  const maxLng = Math.max(...longitudes)
+  const latFraction = Math.abs((latRad(maxLat) - latRad(minLat)) / Math.PI)
+  const lngDiff = maxLng - minLng
+  const lngFraction = ((lngDiff % 360) + 360) % 360 / 360
+  const isMobile = window.matchMedia('(max-width: 768px)').matches
+  const usableWidth = window.innerWidth * (isMobile ? 0.7 : 0.58)
+  const usableHeight = window.innerHeight * (isMobile ? 0.42 : 0.72)
+  const zoom = clamp(
+    Math.min(zoomForFraction(usableWidth, lngFraction), zoomForFraction(usableHeight, latFraction)),
+    10,
+    15,
+  )
+  const latSpan = maxLat - minLat
+  const lngSpan = maxLng - minLng
+  const latOffset = latSpan * (isMobile ? 0.08 : 0.03)
+  const lngOffset = lngSpan * (isMobile ? 0.08 : 0.06)
+
+  return {
+    center: [
+      (minLat + maxLat) / 2 + latOffset,
+      (minLng + maxLng) / 2 - lngOffset,
+    ] as [number, number],
+    zoom,
+  }
+}
+
 function App() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -294,6 +363,7 @@ function App() {
   const [mapCenter, setMapCenter] = useState<[number, number]>(defaultCenter)
   const [mapZoom, setMapZoom] = useState(12)
   const [didAutoLocateMobile, setDidAutoLocateMobile] = useState(false)
+  const [didInitialFitVisibleListings, setDidInitialFitVisibleListings] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
   const [draft, setDraft] = useState<ListingDraft>(() => createDraft('physical', language))
   const [addressQuery, setAddressQuery] = useState('')
@@ -340,11 +410,24 @@ function App() {
   }, [globalNotice])
 
   useEffect(() => {
-    if (didAutoLocateMobile || location.pathname !== '/' || typeof window === 'undefined') {
+    if (
+      loadingListings ||
+      didAutoLocateMobile ||
+      location.pathname !== '/' ||
+      typeof window === 'undefined'
+    ) {
       return
     }
 
-    if (!window.matchMedia('(max-width: 768px)').matches || !navigator.geolocation) {
+    const hasApprovedPhysicalListings = listings.some(
+      (listing) => listing.kind === 'physical' && listing.approvalStatus === 'approved',
+    )
+
+    if (
+      !window.matchMedia('(max-width: 768px)').matches ||
+      !navigator.geolocation ||
+      hasApprovedPhysicalListings
+    ) {
       setDidAutoLocateMobile(true)
       return
     }
@@ -364,59 +447,75 @@ function App() {
         timeout: 8_000,
       },
     )
-  }, [didAutoLocateMobile, location.pathname])
+  }, [didAutoLocateMobile, listings, loadingListings, location.pathname])
 
-  const approvedPhysicalListings = listings.filter(
-    (listing) => listing.kind === 'physical' && listing.approvalStatus === 'approved',
+  const approvedPhysicalListings = useMemo(
+    () =>
+      listings.filter(
+        (listing) => listing.kind === 'physical' && listing.approvalStatus === 'approved',
+      ),
+    [listings],
   )
-  const approvedOnlineListings = listings.filter(
-    (listing) => listing.kind === 'online' && listing.approvalStatus === 'approved',
+  const approvedOnlineListings = useMemo(
+    () =>
+      listings.filter(
+        (listing) => listing.kind === 'online' && listing.approvalStatus === 'approved',
+      ),
+    [listings],
   )
 
-  const filteredPhysicalListings = approvedPhysicalListings.filter((listing) => {
-    if (categoryFilter !== 'all' && listing.category !== categoryFilter) {
-      return false
-    }
+  const filteredPhysicalListings = useMemo(
+    () =>
+      approvedPhysicalListings.filter((listing) => {
+        if (categoryFilter !== 'all' && listing.category !== categoryFilter) {
+          return false
+        }
 
-    if (!listing.verified) {
-      return false
-    }
+        if (!listing.verified) {
+          return false
+        }
 
-    if (!deferredSearch) {
-      return true
-    }
+        if (!deferredSearch) {
+          return true
+        }
 
-    const searchable = [
-      listing.name,
-      listing.description,
-      listing.city ?? '',
-      listing.address ?? '',
-      ...listing.tags,
-      ...listing.products,
-    ]
-      .join(' ')
-      .toLowerCase()
+        const searchable = [
+          listing.name,
+          listing.description,
+          listing.city ?? '',
+          listing.address ?? '',
+          ...listing.tags,
+          ...listing.products,
+        ]
+          .join(' ')
+          .toLowerCase()
 
-    return searchable.includes(deferredSearch)
-  })
+        return searchable.includes(deferredSearch)
+      }),
+    [approvedPhysicalListings, categoryFilter, deferredSearch],
+  )
 
-  const filteredOnlineListings = approvedOnlineListings.filter((listing) => {
-    if (!deferredSearch) {
-      return true
-    }
+  const filteredOnlineListings = useMemo(
+    () =>
+      approvedOnlineListings.filter((listing) => {
+        if (!deferredSearch) {
+          return true
+        }
 
-    const searchable = [
-      listing.name,
-      listing.description,
-      listing.websiteUrl ?? '',
-      ...listing.tags,
-      ...listing.products,
-    ]
-      .join(' ')
-      .toLowerCase()
+        const searchable = [
+          listing.name,
+          listing.description,
+          listing.websiteUrl ?? '',
+          ...listing.tags,
+          ...listing.products,
+        ]
+          .join(' ')
+          .toLowerCase()
 
-    return searchable.includes(deferredSearch)
-  })
+        return searchable.includes(deferredSearch)
+      }),
+    [approvedOnlineListings, deferredSearch],
+  )
 
   const selectedListing =
     filteredPhysicalListings.find((listing) => listing.id === selectedId) ?? null
@@ -426,6 +525,36 @@ function App() {
       setSelectedId(null)
     }
   }, [filteredPhysicalListings, selectedId])
+
+  useEffect(() => {
+    if (
+      didInitialFitVisibleListings ||
+      loadingListings ||
+      location.pathname !== '/' ||
+      selectedId ||
+      formOpen ||
+      filteredPhysicalListings.length === 0
+    ) {
+      return
+    }
+
+    const viewport = getViewportForListings(filteredPhysicalListings)
+
+    if (!viewport) {
+      return
+    }
+
+    setMapCenter(viewport.center)
+    setMapZoom(viewport.zoom)
+    setDidInitialFitVisibleListings(true)
+  }, [
+    didInitialFitVisibleListings,
+    filteredPhysicalListings,
+    formOpen,
+    loadingListings,
+    location.pathname,
+    selectedId,
+  ])
 
   const groupedOnlineListings = useMemo(() => {
     const groups = new globalThis.Map<string, Listing[]>()
@@ -899,67 +1028,34 @@ function FloatingAlert({
 
 function MapListingMarker({
   listing,
-  coordinates,
-  language,
+  anchor,
   selected,
   onSelect,
+  left,
+  top,
 }: {
   listing: Listing
-  coordinates: [number, number]
-  language: Language
+  anchor: [number, number]
   selected: boolean
   onSelect: (listing: Listing) => void
+  left?: number
+  top?: number
 }) {
-  const { averageRating, reviewCount } = getRatingSummary(listing)
-  const hasRating = averageRating !== null
-  const ratingLabel = hasRating ? formatRatingValue(averageRating, language) : null
   const accent = getCategoryAccent(listing.category)
 
   return (
     <Marker
-      anchor={coordinates}
+      anchor={anchor}
+      left={left}
+      top={top}
       color={accent}
-      width={selected ? 56 : 48}
-      height={hasRating ? (selected ? 82 : 74) : selected ? 64 : 56}
-    >
-      <button
-        type="button"
-        className={[
-          'map-listing-marker',
-          hasRating ? 'map-listing-marker-with-rating' : '',
-          selected ? 'map-listing-marker-selected' : '',
-        ]
-          .filter(Boolean)
-          .join(' ')}
-        style={{ '--marker-accent': accent } as CSSProperties}
-        onClick={(event) => {
-          event.stopPropagation()
-          onSelect(listing)
-        }}
-        aria-label={
-          hasRating
-            ? language === 'es'
-              ? `${listing.name}, calificación ${ratingLabel} sobre 5`
-              : `${listing.name}, rating ${ratingLabel} out of 5`
-            : listing.name
-        }
-        title={
-          hasRating
-            ? `${listing.name} · ★ ${ratingLabel} (${reviewCount})`
-            : listing.name
-        }
-      >
-        {hasRating ? (
-          <span className="map-listing-marker-rating">
-            <span aria-hidden="true">★</span>
-            <span>{ratingLabel}</span>
-          </span>
-        ) : null}
-        <span className="map-listing-marker-pin" aria-hidden="true">
-          <span className="map-listing-marker-core" />
-        </span>
-      </button>
-    </Marker>
+      width={selected ? 56 : 42}
+      hover={selected}
+      onClick={({ event }) => {
+        event.stopPropagation?.()
+        onSelect(listing)
+      }}
+    />
   )
 }
 
@@ -1364,8 +1460,7 @@ function MapView(props: {
               <MapListingMarker
                 key={listing.id}
                 listing={listing}
-                coordinates={listing.coordinates}
-                language={language}
+                anchor={listing.coordinates}
                 selected={selectedListing?.id === listing.id}
                 onSelect={onSelectListing}
               />

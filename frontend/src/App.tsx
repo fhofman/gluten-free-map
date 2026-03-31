@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { ChangeEvent, FormEvent } from 'react'
+import type { CSSProperties, ChangeEvent, FormEvent } from 'react'
 import { NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { Map as PigeonMap, Marker } from 'pigeon-maps'
 import { osm } from 'pigeon-maps/providers'
@@ -242,15 +242,29 @@ function formatDate(value: string | null, language: Language) {
   }).format(new Date(value))
 }
 
-function getAverageRating(listing: Listing) {
-  if (listing.reviews.length === 0) {
-    return null
+function getRatingSummary(listing: Listing) {
+  const reviewCount = listing.reviews.length
+
+  if (reviewCount === 0) {
+    return {
+      averageRating: null,
+      reviewCount,
+    }
   }
 
-  return (
-    listing.reviews.reduce((total, review) => total + review.rating, 0) /
-    listing.reviews.length
-  )
+  return {
+    averageRating:
+      listing.reviews.reduce((total, review) => total + review.rating, 0) /
+      reviewCount,
+    reviewCount,
+  }
+}
+
+function formatRatingValue(value: number, language: Language) {
+  return new Intl.NumberFormat(language === 'es' ? 'es-AR' : 'en-US', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(value)
 }
 
 function App() {
@@ -521,12 +535,18 @@ function App() {
 
   async function handleAddressSearch() {
     setAddressStatus(null)
+    const query = addressQuery.trim() || [draft.address, draft.city].filter(Boolean).join(', ')
+
+    if (!addressQuery.trim() && query) {
+      setAddressQuery(query)
+    }
 
     try {
-      const results = await searchAddress(addressQuery, language)
+      const results = await searchAddress(query, language)
       setAddressResults(results)
-      setAddressStatus(results.length === 0 ? t.emptyMap : null)
+      setAddressStatus(results.length === 0 ? t.addressNoResults : null)
     } catch (error) {
+      setAddressResults([])
       setAddressStatus(error instanceof Error ? error.message : 'Address search failed.')
     }
   }
@@ -877,6 +897,72 @@ function FloatingAlert({
   return <div className={`floating-alert floating-alert-${tone}`}>{children}</div>
 }
 
+function MapListingMarker({
+  listing,
+  coordinates,
+  language,
+  selected,
+  onSelect,
+}: {
+  listing: Listing
+  coordinates: [number, number]
+  language: Language
+  selected: boolean
+  onSelect: (listing: Listing) => void
+}) {
+  const { averageRating, reviewCount } = getRatingSummary(listing)
+  const hasRating = averageRating !== null
+  const ratingLabel = hasRating ? formatRatingValue(averageRating, language) : null
+  const accent = getCategoryAccent(listing.category)
+
+  return (
+    <Marker
+      anchor={coordinates}
+      color={accent}
+      width={selected ? 56 : 48}
+      height={hasRating ? (selected ? 82 : 74) : selected ? 64 : 56}
+    >
+      <button
+        type="button"
+        className={[
+          'map-listing-marker',
+          hasRating ? 'map-listing-marker-with-rating' : '',
+          selected ? 'map-listing-marker-selected' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        style={{ '--marker-accent': accent } as CSSProperties}
+        onClick={(event) => {
+          event.stopPropagation()
+          onSelect(listing)
+        }}
+        aria-label={
+          hasRating
+            ? language === 'es'
+              ? `${listing.name}, calificación ${ratingLabel} sobre 5`
+              : `${listing.name}, rating ${ratingLabel} out of 5`
+            : listing.name
+        }
+        title={
+          hasRating
+            ? `${listing.name} · ★ ${ratingLabel} (${reviewCount})`
+            : listing.name
+        }
+      >
+        {hasRating ? (
+          <span className="map-listing-marker-rating">
+            <span aria-hidden="true">★</span>
+            <span>{ratingLabel}</span>
+          </span>
+        ) : null}
+        <span className="map-listing-marker-pin" aria-hidden="true">
+          <span className="map-listing-marker-core" />
+        </span>
+      </button>
+    </Marker>
+  )
+}
+
 function MapView(props: {
   language: Language
   listings: Listing[]
@@ -969,6 +1055,9 @@ function MapView(props: {
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
   const [hoverRating, setHoverRating] = useState<number | null>(null)
   const cameraInputRef = useRef<HTMLInputElement | null>(null)
+  const selectedListingRating = selectedListing
+    ? getRatingSummary(selectedListing)
+    : null
   const { startUpload: startCameraUpload } = useListingUpload('listingImage', {
     headers: session?.csrfToken
       ? {
@@ -1184,7 +1273,11 @@ function MapView(props: {
                 <div className="review-summary">
                   <span className="card-title">{t.reviews}</span>
                   <span>
-                    {getAverageRating(selectedListing)?.toFixed(1) ?? '0.0'} ({selectedListing.reviews.length})
+                    {selectedListingRating?.averageRating != null
+                      ? formatRatingValue(selectedListingRating.averageRating, language)
+                      : language === 'es'
+                        ? '0,0'
+                        : '0.0'} ({selectedListingRating?.reviewCount ?? 0})
                   </span>
                 </div>
 
@@ -1268,15 +1361,13 @@ function MapView(props: {
         >
           {listings.map((listing) =>
             listing.coordinates ? (
-              <Marker
+              <MapListingMarker
                 key={listing.id}
-                anchor={listing.coordinates}
-                color={getCategoryAccent(listing.category)}
-                width={selectedListing?.id === listing.id ? 56 : 42}
-                onClick={({ event }) => {
-                  event.stopPropagation?.()
-                  onSelectListing(listing)
-                }}
+                listing={listing}
+                coordinates={listing.coordinates}
+                language={language}
+                selected={selectedListing?.id === listing.id}
+                onSelect={onSelectListing}
               />
             ) : null,
           )}

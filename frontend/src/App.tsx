@@ -411,43 +411,51 @@ function App() {
 
   useEffect(() => {
     if (
-      loadingListings ||
       didAutoLocateMobile ||
       location.pathname !== '/' ||
-      typeof window === 'undefined'
+      typeof window === 'undefined' ||
+      selectedId ||
+      formOpen
     ) {
       return
     }
 
-    const hasApprovedPhysicalListings = listings.some(
-      (listing) => listing.kind === 'physical' && listing.approvalStatus === 'approved',
-    )
-
-    if (
-      !window.matchMedia('(max-width: 768px)').matches ||
-      !navigator.geolocation ||
-      hasApprovedPhysicalListings
-    ) {
+    if (!navigator.geolocation) {
       setDidAutoLocateMobile(true)
       return
     }
 
+    let cancelled = false
+
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
+        if (cancelled) {
+          return
+        }
+
         setMapCenter([coords.latitude, coords.longitude])
         setMapZoom(14)
+        setDidInitialFitVisibleListings(true)
         setDidAutoLocateMobile(true)
       },
       () => {
+        if (cancelled) {
+          return
+        }
+
         setDidAutoLocateMobile(true)
       },
       {
         enableHighAccuracy: true,
-        maximumAge: 60_000,
-        timeout: 8_000,
+        maximumAge: 0,
+        timeout: 12_000,
       },
     )
-  }, [didAutoLocateMobile, listings, loadingListings, location.pathname])
+
+    return () => {
+      cancelled = true
+    }
+  }, [didAutoLocateMobile, formOpen, location.pathname, selectedId])
 
   const approvedPhysicalListings = useMemo(
     () =>
@@ -1151,6 +1159,11 @@ function MapView(props: {
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
   const [hoverRating, setHoverRating] = useState<number | null>(null)
   const cameraInputRef = useRef<HTMLInputElement | null>(null)
+  const uploadWatchdogRef = useRef<number | null>(null)
+  const uploadTimeoutMessage =
+    language === 'es'
+      ? 'La subida tardó demasiado. Revisá tu conexión y probá de nuevo.'
+      : 'Upload took too long. Check your connection and try again.'
   const selectedListingRating = selectedListing
     ? getRatingSummary(selectedListing)
     : null
@@ -1169,10 +1182,29 @@ function MapView(props: {
     })
   }
 
+  function clearUploadWatchdog() {
+    if (uploadWatchdogRef.current === null) {
+      return
+    }
+
+    window.clearTimeout(uploadWatchdogRef.current)
+    uploadWatchdogRef.current = null
+  }
+
+  function startUploadWatchdog() {
+    clearUploadWatchdog()
+    uploadWatchdogRef.current = window.setTimeout(() => {
+      clearPendingUploadPreviews()
+      setUploadingPhotos(false)
+      onFormStatusChange(uploadTimeoutMessage)
+    }, 45_000)
+  }
+
   function setPendingFiles(files: File[]) {
     clearPendingUploadPreviews()
 
     if (files.length === 0) {
+      clearUploadWatchdog()
       setUploadingPhotos(false)
       return
     }
@@ -1186,9 +1218,11 @@ function MapView(props: {
     )
     setUploadingPhotos(true)
     onFormStatusChange(t.uploadingPhotos)
+    startUploadWatchdog()
   }
 
   function completeUploadedFiles(files: Array<{ key: string; url: string; name: string }>) {
+    clearUploadWatchdog()
     clearPendingUploadPreviews()
     setUploadingPhotos(false)
     onUploadRefsChange(mergeUploadRefs(uploadRefs, files))
@@ -1199,6 +1233,7 @@ function MapView(props: {
   }
 
   function failUploadedFiles(error: Error) {
+    clearUploadWatchdog()
     clearPendingUploadPreviews()
     setUploadingPhotos(false)
     onFormStatusChange(`${t.uploadError} ${error.message}`)
@@ -1231,6 +1266,7 @@ function MapView(props: {
 
   useEffect(() => {
     if (!formOpen) {
+      clearUploadWatchdog()
       clearPendingUploadPreviews()
       setUploadingPhotos(false)
     }
@@ -1242,6 +1278,7 @@ function MapView(props: {
 
   useEffect(
     () => () => {
+      clearUploadWatchdog()
       pendingUploadPreviews.forEach((file) => URL.revokeObjectURL(file.url))
     },
     [pendingUploadPreviews],

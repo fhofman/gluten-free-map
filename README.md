@@ -33,12 +33,14 @@ Variables clave:
 - `WORKOS_CLIENT_ID`
 - `WORKOS_COOKIE_PASSWORD`
 - `UPLOADTHING_TOKEN`
+- `UPLOADTHING_CALLBACK_URL`
 - `VITE_API_BASE_URL`
 
 Notas:
 
 - si no configurás WorkOS, la app arranca igual pero el login queda deshabilitado
 - si no configurás UploadThing, la carga de fotos queda deshabilitada
+- si frontend y backend corren en dominios distintos, definí `UPLOADTHING_CALLBACK_URL` con el URL público del backend (`https://.../api/uploadthing`)
 
 ## Desarrollo local
 

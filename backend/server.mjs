@@ -42,6 +42,7 @@ const env = {
   databaseUrl: process.env.DATABASE_URL ?? '',
   frontendUrl: (process.env.FRONTEND_URL ?? 'http://127.0.0.1:5173').replace(/\/$/, ''),
   backendUrl: (process.env.BACKEND_URL ?? 'http://127.0.0.1:3001').replace(/\/$/, ''),
+  uploadthingCallbackUrl: (process.env.UPLOADTHING_CALLBACK_URL ?? '').trim().replace(/\/$/, ''),
   workosApiKey: process.env.WORKOS_API_KEY ?? '',
   workosClientId: process.env.WORKOS_CLIENT_ID ?? '',
   workosCookiePassword: process.env.WORKOS_COOKIE_PASSWORD ?? '',
@@ -72,7 +73,11 @@ function hasValidWorkosCookiePassword() {
 }
 
 function getPublicUploadthingCallbackUrl() {
-  const candidates = [env.frontendUrl, env.backendUrl]
+  if (env.uploadthingCallbackUrl) {
+    return env.uploadthingCallbackUrl
+  }
+
+  const candidates = [env.backendUrl, env.frontendUrl]
 
   for (const candidate of candidates) {
     if (!candidate) {
@@ -91,6 +96,14 @@ function getPublicUploadthingCallbackUrl() {
   }
 
   return undefined
+}
+
+function shouldUseUploadthingDevMode(callbackUrl) {
+  if (env.nodeEnv !== 'production') {
+    return true
+  }
+
+  return !callbackUrl
 }
 
 if (!env.databaseUrl) {
@@ -112,6 +125,13 @@ const workos = env.workosApiKey
 
 const app = express()
 const uploadthingCallbackUrl = getPublicUploadthingCallbackUrl()
+const uploadthingIsDev = shouldUseUploadthingDevMode(uploadthingCallbackUrl)
+
+if (env.uploadthingToken) {
+  console.info(
+    `[uploadthing] mode=${uploadthingIsDev ? 'dev' : 'prod'} callback=${uploadthingCallbackUrl ?? 'auto:none'}`,
+  )
+}
 
 if (env.trustProxy) {
   app.set('trust proxy', env.trustProxy === 'true' ? true : Number.parseInt(env.trustProxy, 10))
@@ -1146,7 +1166,7 @@ app.use(
     config: {
       token: env.uploadthingToken,
       ...(uploadthingCallbackUrl ? { callbackUrl: uploadthingCallbackUrl } : {}),
-      isDev: env.nodeEnv !== 'production',
+      isDev: uploadthingIsDev,
     },
   }),
 )

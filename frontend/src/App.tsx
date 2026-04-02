@@ -70,6 +70,8 @@ interface ListingDraft {
   city: string
   address: string
   websiteUrl: string
+  whatsappPhone: string
+  instagramUsername: string
   description: string
   tagsText: string
   productsText: string
@@ -143,6 +145,31 @@ function hasPublicWebsiteUrl(value: string | null): value is string {
   }
 }
 
+function getWhatsappUrl(value: string | null) {
+  const digits = `${value ?? ''}`.replace(/\D/g, '')
+
+  if (digits.length < 8) {
+    return null
+  }
+
+  return `https://wa.me/${digits}`
+}
+
+function normalizeInstagramUsername(value: string | null) {
+  const normalized = `${value ?? ''}`.trim().replace(/^@+/, '')
+  return normalized || null
+}
+
+function getInstagramUrl(value: string | null) {
+  const username = normalizeInstagramUsername(value)
+
+  if (!username) {
+    return null
+  }
+
+  return `https://www.instagram.com/${encodeURIComponent(username)}`
+}
+
 function createDraft(
   kind: ListingKind = 'physical',
   language: Language = defaultLanguage,
@@ -156,6 +183,8 @@ function createDraft(
     city: '',
     address: '',
     websiteUrl: '',
+    whatsappPhone: '',
+    instagramUsername: '',
     description: '',
     tagsText: '',
     productsText: '',
@@ -201,18 +230,42 @@ function validateDraft(draft: ListingDraft, language: Language) {
     if (draft.address.trim().length < 3) {
       return language === 'es' ? 'Completá la dirección.' : 'Fill in the address.'
     }
-
-    return null
   }
 
-  if (!draft.websiteUrl.trim()) {
-    return language === 'es' ? 'Completá la URL del sitio web.' : 'Add the website URL.'
+  if (draft.kind === 'online') {
+    if (!draft.websiteUrl.trim()) {
+      return language === 'es' ? 'Completá la URL del sitio web.' : 'Add the website URL.'
+    }
+
+    try {
+      new URL(draft.websiteUrl.trim())
+    } catch {
+      return language === 'es' ? 'Completá una URL válida.' : 'Enter a valid URL.'
+    }
   }
 
-  try {
-    new URL(draft.websiteUrl.trim())
-  } catch {
-    return language === 'es' ? 'Completá una URL válida.' : 'Enter a valid URL.'
+  const whatsappPhone = draft.whatsappPhone.trim()
+
+  if (whatsappPhone) {
+    if (!/^[0-9+()\s.-]{6,32}$/.test(whatsappPhone)) {
+      return language === 'es'
+        ? 'Completá un teléfono de WhatsApp válido.'
+        : 'Enter a valid WhatsApp phone number.'
+    }
+
+    if (whatsappPhone.replace(/\D/g, '').length < 8) {
+      return language === 'es'
+        ? 'Completá un teléfono de WhatsApp con prefijo y número.'
+        : 'Enter a WhatsApp number with country/area code.'
+    }
+  }
+
+  const instagramUsername = draft.instagramUsername.trim().replace(/^@+/, '')
+
+  if (instagramUsername && !/^[a-zA-Z0-9._]{1,30}$/.test(instagramUsername)) {
+    return language === 'es'
+      ? 'Completá un usuario de Instagram válido (sin espacios).'
+      : 'Enter a valid Instagram username (no spaces).'
   }
 
   return null
@@ -779,6 +832,8 @@ function App() {
         address: draft.address.trim(),
         coordinates: draft.coordinates,
         websiteUrl: draft.websiteUrl.trim(),
+        whatsappPhone: draft.whatsappPhone.trim(),
+        instagramUsername: draft.instagramUsername.trim().replace(/^@+/, ''),
         description: draft.description.trim(),
         tags: splitCommaList(draft.tagsText),
         products: splitCommaList(draft.productsText),
@@ -1219,6 +1274,19 @@ function MapView(props: {
   const selectedListingRating = selectedListing
     ? getRatingSummary(selectedListing)
     : null
+  const selectedListingWebsiteUrl =
+    selectedListing && hasPublicWebsiteUrl(selectedListing.websiteUrl)
+      ? selectedListing.websiteUrl
+      : null
+  const selectedListingWhatsappUrl = selectedListing
+    ? getWhatsappUrl(selectedListing.whatsappPhone)
+    : null
+  const selectedListingInstagramUsername = selectedListing
+    ? normalizeInstagramUsername(selectedListing.instagramUsername)
+    : null
+  const selectedListingInstagramUrl = selectedListing
+    ? getInstagramUrl(selectedListing.instagramUsername)
+    : null
 
   function clearPendingUploadPreviews() {
     setPendingUploadPreviews((current) => {
@@ -1490,10 +1558,26 @@ function MapView(props: {
             <div className="popup-body">
               <p>{selectedListing.description}</p>
               {selectedListing.address ? <p>{selectedListing.address}</p> : null}
-              {hasPublicWebsiteUrl(selectedListing.websiteUrl) ? (
-                <a href={selectedListing.websiteUrl} target="_blank" rel="noreferrer" className="external-link">
-                  {t.website}
-                </a>
+              {selectedListingWebsiteUrl || selectedListingWhatsappUrl || selectedListingInstagramUrl ? (
+                <div className="action-row">
+                  {selectedListingWebsiteUrl ? (
+                    <a href={selectedListingWebsiteUrl} target="_blank" rel="noreferrer" className="external-link">
+                      {t.website}
+                    </a>
+                  ) : null}
+                  {selectedListingWhatsappUrl ? (
+                    <a href={selectedListingWhatsappUrl} target="_blank" rel="noreferrer" className="external-link">
+                      {t.whatsappAction}
+                    </a>
+                  ) : null}
+                  {selectedListingInstagramUrl ? (
+                    <a href={selectedListingInstagramUrl} target="_blank" rel="noreferrer" className="external-link">
+                      {selectedListingInstagramUsername
+                        ? `@${selectedListingInstagramUsername}`
+                        : t.instagramAction}
+                    </a>
+                  ) : null}
+                </div>
               ) : null}
 
               <div className="tag-cloud">
@@ -1782,6 +1866,24 @@ function MapView(props: {
                 </label>
               )}
 
+              <label>
+                {t.whatsappPhone}
+                <input
+                  value={draft.whatsappPhone}
+                  onChange={(event) => onDraftChange('whatsappPhone', event.target.value)}
+                  placeholder={t.whatsappPlaceholder}
+                />
+              </label>
+
+              <label>
+                {t.instagramUsername}
+                <input
+                  value={draft.instagramUsername}
+                  onChange={(event) => onDraftChange('instagramUsername', event.target.value)}
+                  placeholder={t.instagramPlaceholder}
+                />
+              </label>
+
               <label className="full-width">
                 {t.description}
                 <textarea
@@ -1997,30 +2099,49 @@ function CatalogView({
               <span>{listings.length}</span>
             </div>
             <div className="catalog-grid">
-              {listings.map((listing) => (
-                <article key={listing.id} className="catalog-card">
-                  <span className="listing-meta">{getCategoryLabel(language, listing.category)}</span>
-                  <h3>{listing.name}</h3>
-                  <p>{listing.description}</p>
-                  <div className="tag-cloud">
-                    {listing.products.map((item) => (
-                      <span key={item} className="tag-token">
-                        {item}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="action-row">
-                    {hasPublicWebsiteUrl(listing.websiteUrl) ? (
-                      <a href={listing.websiteUrl} target="_blank" rel="noreferrer" className="solid-button">
-                        {t.website}
-                      </a>
-                    ) : null}
-                    <button type="button" className="ghost-button" onClick={() => onSelectListing(listing)}>
-                      {t.details}
-                    </button>
-                  </div>
-                </article>
-              ))}
+              {listings.map((listing) => {
+                const websiteUrl = hasPublicWebsiteUrl(listing.websiteUrl)
+                  ? listing.websiteUrl
+                  : null
+                const whatsappUrl = getWhatsappUrl(listing.whatsappPhone)
+                const instagramUsername = normalizeInstagramUsername(listing.instagramUsername)
+                const instagramUrl = getInstagramUrl(listing.instagramUsername)
+
+                return (
+                  <article key={listing.id} className="catalog-card">
+                    <span className="listing-meta">{getCategoryLabel(language, listing.category)}</span>
+                    <h3>{listing.name}</h3>
+                    <p>{listing.description}</p>
+                    <div className="tag-cloud">
+                      {listing.products.map((item) => (
+                        <span key={item} className="tag-token">
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="action-row">
+                      {websiteUrl ? (
+                        <a href={websiteUrl} target="_blank" rel="noreferrer" className="solid-button">
+                          {t.website}
+                        </a>
+                      ) : null}
+                      {whatsappUrl ? (
+                        <a href={whatsappUrl} target="_blank" rel="noreferrer" className="ghost-button">
+                          {t.whatsappAction}
+                        </a>
+                      ) : null}
+                      {instagramUrl ? (
+                        <a href={instagramUrl} target="_blank" rel="noreferrer" className="ghost-button">
+                          {instagramUsername ? `@${instagramUsername}` : t.instagramAction}
+                        </a>
+                      ) : null}
+                      <button type="button" className="ghost-button" onClick={() => onSelectListing(listing)}>
+                        {t.details}
+                      </button>
+                    </div>
+                  </article>
+                )
+              })}
             </div>
           </section>
         ))}

@@ -13,12 +13,14 @@ Este proyecto usa versionado semántico (SemVer):
 - Flujo de versionado con `scripts/release.mjs` y comandos `npm run release`, `release:patch`, `release:minor`, `release:major`.
 - Vista previa de ubicación en el mapa al buscar direcciones durante el alta de lugares físicos.
 - Botón `Subir imagen` para desplegar el bloque de carga en formularios de alta de lugar y reseñas.
+- Campos opcionales de contacto en cada lugar: teléfono de WhatsApp y usuario de Instagram.
 
 ### Changed
 - El bloque de carga de imágenes ahora inicia cerrado y se abre bajo demanda.
 - El área de arrastrar/seleccionar imagen se compactó para ocupar menos espacio visual.
 - La búsqueda de dirección ahora centra el mapa y preselecciona la primera coincidencia con latitud/longitud.
 - La carga de imágenes se mantiene en modo automático: al arrastrar o elegir archivo, se sube sin pasos extra.
+- Los datos de WhatsApp/Instagram se validan y se muestran como enlaces directos en detalle del lugar y catálogo.
 
 ### Fixed
 - Limpieza del estado de vista previa de coordenadas al cerrar o reabrir el formulario de alta.

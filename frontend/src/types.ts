@@ -61,6 +61,8 @@ export interface Listing {
   address: string | null
   coordinates: [number, number] | null
   websiteUrl: string | null
+  whatsappPhone: string | null
+  instagramUsername: string | null
   description: string
   tags: string[]
   products: string[]
@@ -92,6 +94,8 @@ export interface CreateListingInput {
   address: string
   coordinates: [number, number] | null
   websiteUrl: string
+  whatsappPhone: string
+  instagramUsername: string
   description: string
   tags: string[]
   products: string[]

@@ -318,6 +318,41 @@ const listingInputSchema = z
       },
       z.string().url().nullable().optional(),
     ),
+    whatsappPhone: z.preprocess(
+      (value) => {
+        const normalized = `${value ?? ''}`.trim()
+        return normalized || null
+      },
+      z
+        .string()
+        .min(6)
+        .max(32)
+        .regex(
+          /^[0-9+()\s.-]+$/,
+          'Completa un telefono de WhatsApp valido (solo digitos y simbolos comunes).',
+        )
+        .refine(
+          (value) => value.replace(/\D/g, '').length >= 8,
+          'Completa un telefono de WhatsApp con prefijo y numero.',
+        )
+        .nullable()
+        .optional(),
+    ),
+    instagramUsername: z.preprocess(
+      (value) => {
+        const normalized = `${value ?? ''}`.trim().replace(/^@+/, '').toLowerCase()
+        return normalized || null
+      },
+      z
+        .string()
+        .max(30)
+        .regex(
+          /^[a-z0-9._]+$/,
+          'Completa un usuario de Instagram valido (sin espacios).',
+        )
+        .nullable()
+        .optional(),
+    ),
     description: z.string().trim().min(12).max(2000),
     tags: z.array(z.string().trim().min(1).max(50)).max(20).default([]),
     products: z.array(z.string().trim().min(1).max(80)).max(30).default([]),
@@ -385,6 +420,8 @@ function mapListingRow(row) {
         ? [Number(row.latitude), Number(row.longitude)]
         : null,
     websiteUrl: row.websiteUrl,
+    whatsappPhone: row.whatsappPhone,
+    instagramUsername: row.instagramUsername,
     description: row.description,
     tags: Array.isArray(row.tags) ? row.tags : [],
     products: Array.isArray(row.products) ? row.products : [],
@@ -422,6 +459,8 @@ function buildSelectListingsQuery(whereClause = '') {
       l.latitude,
       l.longitude,
       l.website_url AS "websiteUrl",
+      l.whatsapp_phone AS "whatsappPhone",
+      l.instagram_username AS "instagramUsername",
       l.description,
       l.tags,
       l.products,
@@ -542,6 +581,8 @@ async function createSchema() {
       latitude DOUBLE PRECISION,
       longitude DOUBLE PRECISION,
       website_url TEXT,
+      whatsapp_phone TEXT,
+      instagram_username TEXT,
       description TEXT NOT NULL,
       tags TEXT[] NOT NULL DEFAULT '{}',
       products TEXT[] NOT NULL DEFAULT '{}',
@@ -625,6 +666,20 @@ async function createSchema() {
   `)
 
   await pool.query(`
+    ALTER TABLE listings
+    ADD COLUMN IF NOT EXISTS whatsapp_phone TEXT;
+
+    ALTER TABLE listings
+    ADD COLUMN IF NOT EXISTS instagram_username TEXT;
+
+    UPDATE listings
+    SET whatsapp_phone = NULL
+    WHERE whatsapp_phone IS NOT NULL AND btrim(whatsapp_phone) = '';
+
+    UPDATE listings
+    SET instagram_username = NULL
+    WHERE instagram_username IS NOT NULL AND btrim(instagram_username) = '';
+
     ALTER TABLE listing_photos
     ADD COLUMN IF NOT EXISTS uploader_user_id TEXT;
 
@@ -755,6 +810,8 @@ async function insertListing(client, listing, photos = [], reviews = []) {
         latitude,
         longitude,
         website_url,
+        whatsapp_phone,
+        instagram_username,
         description,
         tags,
         products,
@@ -773,8 +830,8 @@ async function insertListing(client, listing, photos = [], reviews = []) {
         updated_at
       )
       VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::text[], $12::text[], $13,
-        $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::text[], $14::text[],
+        $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27
       )
     `,
     [
@@ -787,6 +844,8 @@ async function insertListing(client, listing, photos = [], reviews = []) {
       listing.coordinates?.[0] ?? null,
       listing.coordinates?.[1] ?? null,
       listing.websiteUrl,
+      listing.whatsappPhone ?? null,
+      listing.instagramUsername ?? null,
       listing.description,
       listing.tags,
       listing.products,
@@ -1016,6 +1075,8 @@ async function migrateLegacyPlacesIfNeeded() {
         address: row.address,
         coordinates: [Number(row.latitude), Number(row.longitude)],
         websiteUrl: null,
+        whatsappPhone: null,
+        instagramUsername: null,
         description: row.description,
         tags: Array.isArray(row.tags) ? row.tags : [],
         products: Array.isArray(row.products) ? row.products : [],
@@ -1539,6 +1600,8 @@ app.post('/api/listings', writeLimiter, async (request, response, next) => {
       address: input.kind === 'online' ? null : toNullableText(input.address),
       coordinates: input.kind === 'physical' ? input.coordinates : null,
       websiteUrl: input.kind === 'online' ? input.websiteUrl : toNullableText(input.websiteUrl),
+      whatsappPhone: toNullableText(input.whatsappPhone),
+      instagramUsername: toNullableText(input.instagramUsername),
       description: input.description,
       tags: normalizeStringList(input.tags),
       products: normalizeStringList(input.products),

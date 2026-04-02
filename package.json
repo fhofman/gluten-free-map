@@ -15,7 +15,11 @@
     "build:web": "tsc -p frontend/tsconfig.json && vite build --config frontend/vite.config.mjs",
     "build:api": "node --check backend/server.mjs && node --check backend/scripts/create-admin.mjs",
     "lint": "eslint .",
-    "preview": "vite preview --config frontend/vite.config.mjs --host 0.0.0.0 --port 4173"
+    "preview": "vite preview --config frontend/vite.config.mjs --host 0.0.0.0 --port 4173",
+    "release": "node scripts/release.mjs",
+    "release:patch": "node scripts/release.mjs patch",
+    "release:minor": "node scripts/release.mjs minor",
+    "release:major": "node scripts/release.mjs major"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.95.0",

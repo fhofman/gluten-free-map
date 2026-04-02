@@ -6,11 +6,11 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { ChangeEvent, FormEvent } from 'react'
+import type { FormEvent } from 'react'
 import { NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { Map as PigeonMap, Marker } from 'pigeon-maps'
 import { osm } from 'pigeon-maps/providers'
-import { generateReactHelpers, generateUploadDropzone } from '@uploadthing/react'
+import { generateUploadDropzone } from '@uploadthing/react'
 import '@uploadthing/react/styles.css'
 import { createListing, fetchAdminQueue, fetchListings, fetchSession, logout, moderateListing, submitReview } from './api'
 import { searchAddress, type GeocodingResult } from './geocoding'
@@ -46,9 +46,6 @@ const fallbackCategoryAccent = '#4a675f'
 const placeholderWebsiteHosts = new Set(['example.com', 'www.example.com'])
 
 const ListingUploadDropzone = generateUploadDropzone<any>({
-  url: '/api/uploadthing',
-})
-const { useUploadThing: useListingUpload } = generateReactHelpers<any>({
   url: '/api/uploadthing',
 })
 
@@ -368,6 +365,7 @@ function App() {
   const [draft, setDraft] = useState<ListingDraft>(() => createDraft('physical', language))
   const [addressQuery, setAddressQuery] = useState('')
   const [addressResults, setAddressResults] = useState<GeocodingResult[]>([])
+  const [addressPreviewCoordinates, setAddressPreviewCoordinates] = useState<[number, number] | null>(null)
   const [addressStatus, setAddressStatus] = useState<string | null>(null)
   const [uploadRefs, setUploadRefs] = useState<UploadRef[]>([])
   const [formPending, setFormPending] = useState(false)
@@ -646,6 +644,7 @@ function App() {
     setDraft(createDraft(kind, language))
     setAddressQuery('')
     setAddressResults([])
+    setAddressPreviewCoordinates(null)
     setAddressStatus(null)
     setUploadRefs([])
     setFormStatus(null)
@@ -684,9 +683,27 @@ function App() {
     try {
       const results = await searchAddress(query, language)
       setAddressResults(results)
+      const firstResult = results[0] ?? null
+
+      if (firstResult) {
+        setDraft((current) => ({
+          ...current,
+          city: firstResult.city || current.city,
+          address: current.address.trim() ? current.address : firstResult.label,
+          coordinates: firstResult.coordinates,
+          locationLabel: firstResult.label,
+        }))
+        setAddressPreviewCoordinates(firstResult.coordinates)
+        setMapCenter(firstResult.coordinates)
+        setMapZoom(15)
+      } else {
+        setAddressPreviewCoordinates(null)
+      }
+
       setAddressStatus(results.length === 0 ? t.addressNoResults : null)
     } catch (error) {
       setAddressResults([])
+      setAddressPreviewCoordinates(null)
       setAddressStatus(error instanceof Error ? error.message : 'Address search failed.')
     }
   }
@@ -701,6 +718,7 @@ function App() {
     }))
     setMapCenter(result.coordinates)
     setMapZoom(15)
+    setAddressPreviewCoordinates(result.coordinates)
     setAddressResults([])
   }
 
@@ -718,6 +736,7 @@ function App() {
           ? 'Ubicación elegida manualmente en el mapa'
           : 'Location selected directly on the map',
     }))
+    setAddressPreviewCoordinates(latLng)
   }
 
   async function handleCreateListing(event: FormEvent<HTMLFormElement>) {
@@ -802,6 +821,7 @@ function App() {
 
       setFormOpen(false)
       setDraft(createDraft('physical', language))
+      setAddressPreviewCoordinates(null)
       setUploadRefs([])
       setFormStatus(null)
     } catch (error) {
@@ -900,6 +920,11 @@ function App() {
     setReviewStatus(null)
   }
 
+  function handleCloseForm() {
+    setFormOpen(false)
+    setAddressPreviewCoordinates(null)
+  }
+
   return (
     <div className="shell">
       <div className="brand-cloud">
@@ -974,6 +999,7 @@ function App() {
               onClearSelectedListing={handleClearSelectedListing}
               formOpen={formOpen}
               draft={draft}
+              addressPreviewCoordinates={addressPreviewCoordinates}
               onOpenForm={handleOpenForm}
               onDraftChange={updateDraft}
               onAddressQueryChange={setAddressQuery}
@@ -982,7 +1008,7 @@ function App() {
               addressStatus={addressStatus}
               onAddressSearch={() => void handleAddressSearch()}
               onApplyGeocodingResult={applyGeocodingResult}
-              onCloseForm={() => setFormOpen(false)}
+              onCloseForm={handleCloseForm}
               onCreateListing={handleCreateListing}
               formPending={formPending}
               formStatus={formStatus}
@@ -1100,6 +1126,7 @@ function MapView(props: {
   onClearSelectedListing: () => void
   formOpen: boolean
   draft: ListingDraft
+  addressPreviewCoordinates: [number, number] | null
   onOpenForm: (kind: ListingKind) => void
   onDraftChange: <K extends keyof ListingDraft>(key: K, value: ListingDraft[K]) => void
   addressQuery: string
@@ -1146,6 +1173,7 @@ function MapView(props: {
     onClearSelectedListing,
     formOpen,
     draft,
+    addressPreviewCoordinates,
     onOpenForm,
     onDraftChange,
     addressQuery,
@@ -1179,9 +1207,9 @@ function MapView(props: {
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
   const [pendingReviewUploadPreviews, setPendingReviewUploadPreviews] = useState<PendingUploadPreview[]>([])
   const [uploadingReviewPhotos, setUploadingReviewPhotos] = useState(false)
+  const [listingUploadOpen, setListingUploadOpen] = useState(false)
+  const [reviewUploadOpen, setReviewUploadOpen] = useState(false)
   const [hoverRating, setHoverRating] = useState<number | null>(null)
-  const cameraInputRef = useRef<HTMLInputElement | null>(null)
-  const reviewCameraInputRef = useRef<HTMLInputElement | null>(null)
   const uploadWatchdogRef = useRef<number | null>(null)
   const reviewUploadWatchdogRef = useRef<number | null>(null)
   const uploadTimeoutMessage =
@@ -1191,13 +1219,6 @@ function MapView(props: {
   const selectedListingRating = selectedListing
     ? getRatingSummary(selectedListing)
     : null
-  const { startUpload: startCameraUpload } = useListingUpload('listingImage', {
-    headers: session?.csrfToken
-      ? {
-          'X-CSRF-Token': session.csrfToken,
-        }
-      : undefined,
-  })
 
   function clearPendingUploadPreviews() {
     setPendingUploadPreviews((current) => {
@@ -1328,61 +1349,12 @@ function MapView(props: {
     onReviewStatusChange(`${t.uploadError} ${error.message}`)
   }
 
-  async function handleCameraFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? [])
-    event.target.value = ''
-
-    if (files.length === 0) {
-      return
-    }
-
-    setPendingFiles(files)
-
-    try {
-      const uploaded = await startCameraUpload(files)
-      const nextUploads =
-        uploaded?.map((file) => ({
-          key: file.serverData.key,
-          url: file.serverData.url,
-          name: file.serverData.name,
-        })) ?? []
-
-      completeUploadedFiles(nextUploads)
-    } catch (error) {
-      failUploadedFiles(error instanceof Error ? error : new Error(t.uploadError))
-    }
-  }
-
-  async function handleReviewCameraFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? [])
-    event.target.value = ''
-
-    if (files.length === 0) {
-      return
-    }
-
-    setPendingReviewFiles(files)
-
-    try {
-      const uploaded = await startCameraUpload(files)
-      const nextUploads =
-        uploaded?.map((file) => ({
-          key: file.serverData.key,
-          url: file.serverData.url,
-          name: file.serverData.name,
-        })) ?? []
-
-      completeReviewUploadedFiles(nextUploads)
-    } catch (error) {
-      failReviewUploadedFiles(error instanceof Error ? error : new Error(t.uploadError))
-    }
-  }
-
   useEffect(() => {
     if (!formOpen) {
       clearUploadWatchdog()
       clearPendingUploadPreviews()
       setUploadingPhotos(false)
+      setListingUploadOpen(false)
     }
   }, [formOpen])
 
@@ -1394,8 +1366,21 @@ function MapView(props: {
     clearReviewUploadWatchdog()
     clearPendingReviewUploadPreviews()
     setUploadingReviewPhotos(false)
+    setReviewUploadOpen(false)
     onReviewStatusChange(null)
   }, [selectedListing?.id])
+
+  useEffect(() => {
+    if (uploadingPhotos || pendingUploadPreviews.length > 0 || uploadRefs.length > 0) {
+      setListingUploadOpen(true)
+    }
+  }, [pendingUploadPreviews.length, uploadRefs.length, uploadingPhotos])
+
+  useEffect(() => {
+    if (uploadingReviewPhotos || pendingReviewUploadPreviews.length > 0 || reviewUploadRefs.length > 0) {
+      setReviewUploadOpen(true)
+    }
+  }, [pendingReviewUploadPreviews.length, reviewUploadRefs.length, uploadingReviewPhotos])
 
   useEffect(
     () => () => {
@@ -1597,79 +1582,79 @@ function MapView(props: {
                     />
                   </label>
                   {session?.uploadConfigured && session.csrfToken ? (
-                    <div className="upload-shell">
-                      <div className="upload-copy">
-                        <div className="card-title">{t.uploadPhotos}</div>
-                        <p className="helper-text">{t.uploadHint}</p>
-                        <div className="upload-actions">
-                          <button
-                            type="button"
-                            className="ghost-button upload-camera-button"
-                            onClick={() => reviewCameraInputRef.current?.click()}
-                          >
-                            {t.cameraButton}
-                          </button>
-                          <span className="helper-text">{t.cameraHint}</span>
-                        </div>
-                        <input
-                          ref={reviewCameraInputRef}
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          className="camera-input"
-                          onChange={handleReviewCameraFileChange}
-                        />
-                      </div>
-                      <ListingUploadDropzone
-                        endpoint="listingImage"
-                        headers={{
-                          'X-CSRF-Token': session.csrfToken,
-                        }}
-                        content={{
-                          label: () => t.uploadDropLabel,
-                          button: () => t.uploadButton,
-                          allowedContent: () => t.uploadHint,
-                        }}
-                        onChange={(files) => {
-                          setPendingReviewFiles(files)
-                        }}
-                        onClientUploadComplete={(
-                          files: Array<{ serverData: UploadRef }>,
-                        ) => {
-                          const nextUploads = files.map((file) => ({
-                            key: file.serverData.key,
-                            url: file.serverData.url,
-                            name: file.serverData.name,
-                          }))
+                    <div className="upload-collapsible">
+                      <button
+                        type="button"
+                        className={`solid-button upload-toggle-button ${reviewUploadOpen ? 'upload-toggle-button-open' : ''}`}
+                        onClick={() => setReviewUploadOpen((current) => !current)}
+                      >
+                        {reviewUploadOpen ? t.closeUpload : t.openUpload}
+                      </button>
+                      {reviewUploadOpen ? (
+                        <div className="upload-shell">
+                          <div className="upload-copy">
+                            <div className="card-title">{t.uploadPhotos}</div>
+                            <p className="helper-text">{t.uploadHint}</p>
+                          </div>
+                          <ListingUploadDropzone
+                            endpoint="listingImage"
+                            className="upload-dropzone-compact"
+                            appearance={{
+                              container: 'upload-dropzone-compact-container',
+                            }}
+                            headers={{
+                              'X-CSRF-Token': session.csrfToken,
+                            }}
+                            config={{
+                              mode: 'auto',
+                            }}
+                            content={{
+                              label: () => t.uploadDropLabel,
+                              button: () => t.uploadButton,
+                              allowedContent: () => t.uploadHint,
+                            }}
+                            onChange={(files) => {
+                              setPendingReviewFiles(files)
+                            }}
+                            onClientUploadComplete={(
+                              files: Array<{ serverData: UploadRef }>,
+                            ) => {
+                              const nextUploads = files.map((file) => ({
+                                key: file.serverData.key,
+                                url: file.serverData.url,
+                                name: file.serverData.name,
+                              }))
 
-                          completeReviewUploadedFiles(nextUploads)
-                        }}
-                        onUploadError={(error: Error) => {
-                          failReviewUploadedFiles(error)
-                        }}
-                      />
-                      {pendingReviewUploadPreviews.length > 0 || reviewUploadRefs.length > 0 ? (
-                        <div className="upload-preview-grid">
-                          {pendingReviewUploadPreviews.map((file) => (
-                            <figure key={file.id} className="upload-preview-card">
-                              <img src={file.url} alt={file.name} className="photo-thumb" />
-                              <figcaption className="upload-preview-meta">
-                                <span className="upload-status-badge upload-status-badge-uploading">
-                                  {t.uploadingLabel}
-                                </span>
-                                <span className="upload-preview-name">{file.name}</span>
-                              </figcaption>
-                            </figure>
-                          ))}
-                          {reviewUploadRefs.map((file) => (
-                            <figure key={file.key} className="upload-preview-card">
-                              <img src={file.url} alt={file.name} className="photo-thumb" />
-                              <figcaption className="upload-preview-meta">
-                                <span className="upload-status-badge">{t.uploadedLabel}</span>
-                                <span className="upload-preview-name">{file.name}</span>
-                              </figcaption>
-                            </figure>
-                          ))}
+                              completeReviewUploadedFiles(nextUploads)
+                            }}
+                            onUploadError={(error: Error) => {
+                              failReviewUploadedFiles(error)
+                            }}
+                          />
+                          {pendingReviewUploadPreviews.length > 0 || reviewUploadRefs.length > 0 ? (
+                            <div className="upload-preview-grid">
+                              {pendingReviewUploadPreviews.map((file) => (
+                                <figure key={file.id} className="upload-preview-card">
+                                  <img src={file.url} alt={file.name} className="photo-thumb" />
+                                  <figcaption className="upload-preview-meta">
+                                    <span className="upload-status-badge upload-status-badge-uploading">
+                                      {t.uploadingLabel}
+                                    </span>
+                                    <span className="upload-preview-name">{file.name}</span>
+                                  </figcaption>
+                                </figure>
+                              ))}
+                              {reviewUploadRefs.map((file) => (
+                                <figure key={file.key} className="upload-preview-card">
+                                  <img src={file.url} alt={file.name} className="photo-thumb" />
+                                  <figcaption className="upload-preview-meta">
+                                    <span className="upload-status-badge">{t.uploadedLabel}</span>
+                                    <span className="upload-preview-name">{file.name}</span>
+                                  </figcaption>
+                                </figure>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
@@ -1704,6 +1689,14 @@ function MapView(props: {
             onMapZoomChange(zoom)
           }}
         >
+          {formOpen && draft.kind === 'physical' && (draft.coordinates ?? addressPreviewCoordinates) ? (
+            <Marker
+              anchor={draft.coordinates ?? addressPreviewCoordinates ?? mapCenter}
+              color="#2b7a67"
+              width={46}
+              hover
+            />
+          ) : null}
           {listings.map((listing) =>
             listing.coordinates ? (
               <MapListingMarker
@@ -1868,79 +1861,79 @@ function MapView(props: {
             </div>
 
             {session?.uploadConfigured && session.csrfToken ? (
-              <div className="upload-shell">
-                <div className="upload-copy">
-                  <div className="card-title">{t.uploadPhotos}</div>
-                  <p className="helper-text">{t.uploadHint}</p>
-                  <div className="upload-actions">
-                    <button
-                      type="button"
-                      className="ghost-button upload-camera-button"
-                      onClick={() => cameraInputRef.current?.click()}
-                    >
-                      {t.cameraButton}
-                    </button>
-                    <span className="helper-text">{t.cameraHint}</span>
-                  </div>
-                  <input
-                    ref={cameraInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="camera-input"
-                    onChange={handleCameraFileChange}
-                  />
-                </div>
-                <ListingUploadDropzone
-                  endpoint="listingImage"
-                  headers={{
-                    'X-CSRF-Token': session.csrfToken,
-                  }}
-                  content={{
-                    label: () => t.uploadDropLabel,
-                    button: () => t.uploadButton,
-                    allowedContent: () => t.uploadHint,
-                  }}
-                  onChange={(files) => {
-                    setPendingFiles(files)
-                  }}
-                  onClientUploadComplete={(
-                    files: Array<{ serverData: UploadRef }>,
-                  ) => {
-                    const nextUploads = files.map((file) => ({
-                        key: file.serverData.key,
-                        url: file.serverData.url,
-                        name: file.serverData.name,
-                      }))
+              <div className="upload-collapsible">
+                <button
+                  type="button"
+                  className={`solid-button upload-toggle-button ${listingUploadOpen ? 'upload-toggle-button-open' : ''}`}
+                  onClick={() => setListingUploadOpen((current) => !current)}
+                >
+                  {listingUploadOpen ? t.closeUpload : t.openUpload}
+                </button>
+                {listingUploadOpen ? (
+                  <div className="upload-shell">
+                    <div className="upload-copy">
+                      <div className="card-title">{t.uploadPhotos}</div>
+                      <p className="helper-text">{t.uploadHint}</p>
+                    </div>
+                    <ListingUploadDropzone
+                      endpoint="listingImage"
+                      className="upload-dropzone-compact"
+                      appearance={{
+                        container: 'upload-dropzone-compact-container',
+                      }}
+                      headers={{
+                        'X-CSRF-Token': session.csrfToken,
+                      }}
+                      config={{
+                        mode: 'auto',
+                      }}
+                      content={{
+                        label: () => t.uploadDropLabel,
+                        button: () => t.uploadButton,
+                        allowedContent: () => t.uploadHint,
+                      }}
+                      onChange={(files) => {
+                        setPendingFiles(files)
+                      }}
+                      onClientUploadComplete={(
+                        files: Array<{ serverData: UploadRef }>,
+                      ) => {
+                        const nextUploads = files.map((file) => ({
+                            key: file.serverData.key,
+                            url: file.serverData.url,
+                            name: file.serverData.name,
+                          }))
 
-                    completeUploadedFiles(nextUploads)
-                  }}
-                  onUploadError={(error: Error) => {
-                    failUploadedFiles(error)
-                  }}
-                />
-                {pendingUploadPreviews.length > 0 || uploadRefs.length > 0 ? (
-                  <div className="upload-preview-grid">
-                    {pendingUploadPreviews.map((file) => (
-                      <figure key={file.id} className="upload-preview-card">
-                        <img src={file.url} alt={file.name} className="photo-thumb" />
-                        <figcaption className="upload-preview-meta">
-                          <span className="upload-status-badge upload-status-badge-uploading">
-                            {t.uploadingLabel}
-                          </span>
-                          <span className="upload-preview-name">{file.name}</span>
-                        </figcaption>
-                      </figure>
-                    ))}
-                    {uploadRefs.map((file) => (
-                      <figure key={file.key} className="upload-preview-card">
-                        <img src={file.url} alt={file.name} className="photo-thumb" />
-                        <figcaption className="upload-preview-meta">
-                          <span className="upload-status-badge">{t.uploadedLabel}</span>
-                          <span className="upload-preview-name">{file.name}</span>
-                        </figcaption>
-                      </figure>
-                    ))}
+                        completeUploadedFiles(nextUploads)
+                      }}
+                      onUploadError={(error: Error) => {
+                        failUploadedFiles(error)
+                      }}
+                    />
+                    {pendingUploadPreviews.length > 0 || uploadRefs.length > 0 ? (
+                      <div className="upload-preview-grid">
+                        {pendingUploadPreviews.map((file) => (
+                          <figure key={file.id} className="upload-preview-card">
+                            <img src={file.url} alt={file.name} className="photo-thumb" />
+                            <figcaption className="upload-preview-meta">
+                              <span className="upload-status-badge upload-status-badge-uploading">
+                                {t.uploadingLabel}
+                              </span>
+                              <span className="upload-preview-name">{file.name}</span>
+                            </figcaption>
+                          </figure>
+                        ))}
+                        {uploadRefs.map((file) => (
+                          <figure key={file.key} className="upload-preview-card">
+                            <img src={file.url} alt={file.name} className="photo-thumb" />
+                            <figcaption className="upload-preview-meta">
+                              <span className="upload-status-badge">{t.uploadedLabel}</span>
+                              <span className="upload-preview-name">{file.name}</span>
+                            </figcaption>
+                          </figure>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

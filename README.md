@@ -88,6 +88,46 @@ Puertos por defecto:
 - `npm run build:api`: chequeo sintáctico del backend
 - `npm run start`: backend en modo producción
 - `npm run preview`: preview del frontend
+- `npm run release -- patch|minor|major|x.y.z`: prepara release y actualiza `CHANGELOG.md`
+- `npm run release:patch`: sube patch y corta release notes
+- `npm run release:minor`: sube minor y corta release notes
+- `npm run release:major`: sube major y corta release notes
+
+## Versionado y Release Notes
+
+El proyecto usa:
+
+- SemVer en `package.json`
+- release notes en [`CHANGELOG.md`](./CHANGELOG.md)
+- sección `Unreleased` para ir acumulando mejoras antes del próximo corte
+
+Flujo recomendado:
+
+1. Durante el desarrollo, agregá cambios a `## [Unreleased]` en `CHANGELOG.md` bajo `Added`, `Changed`, `Fixed`, etc.
+2. Al liberar versión, corré uno de estos comandos:
+
+```bash
+npm run release:patch
+# o
+npm run release:minor
+# o
+npm run release:major
+# o versión explícita
+npm run release -- 1.2.3
+```
+
+3. El script actualiza:
+   - `package.json`
+   - `package-lock.json`
+   - `CHANGELOG.md` (mueve `Unreleased` a la nueva versión con fecha)
+4. Luego hacé commit + tag:
+
+```bash
+git add package.json package-lock.json CHANGELOG.md
+git commit -m "chore(release): vX.Y.Z"
+git tag vX.Y.Z
+git push origin main --tags
+```
 
 ## Admin
 

@@ -143,6 +143,9 @@ app.use(
     crossOriginResourcePolicy: {
       policy: 'cross-origin',
     },
+    referrerPolicy: {
+      policy: 'strict-origin-when-cross-origin',
+    },
   }),
 )
 
@@ -361,6 +364,7 @@ const listingInputSchema = z
 const reviewInputSchema = z.object({
   rating: z.number().int().min(1).max(5),
   comment: z.string().trim().min(3).max(1000),
+  photoKeys: z.array(z.string().trim().min(1)).max(8).default([]),
 })
 
 const moderationInputSchema = z.object({
@@ -441,7 +445,13 @@ function buildSelectListingsQuery(whereClause = '') {
               'key', lp.storage_key,
               'url', lp.file_url,
               'alt', lp.alt,
-              'uploadedAt', lp.uploaded_at
+              'uploadedAt', lp.uploaded_at,
+              'uploadedBy', json_build_object(
+                'userId', lp.uploader_user_id,
+                'name', lp.uploader_name,
+                'email', lp.uploader_email,
+                'role', lp.uploader_role
+              )
             )
             ORDER BY lp.sort_order, lp.uploaded_at
           )
@@ -459,6 +469,29 @@ function buildSelectListingsQuery(whereClause = '') {
               'comment', lr.comment,
               'createdAt', lr.created_at,
               'updatedAt', lr.updated_at,
+              'photos', COALESCE(
+                (
+                  SELECT json_agg(
+                    json_build_object(
+                      'id', lrp.id,
+                      'key', lrp.storage_key,
+                      'url', lrp.file_url,
+                      'alt', lrp.alt,
+                      'uploadedAt', lrp.uploaded_at,
+                      'uploadedBy', json_build_object(
+                        'userId', lrp.uploader_user_id,
+                        'name', lrp.uploader_name,
+                        'email', lrp.uploader_email,
+                        'role', lrp.uploader_role
+                      )
+                    )
+                    ORDER BY lrp.sort_order, lrp.uploaded_at
+                  )
+                  FROM listing_review_photos lrp
+                  WHERE lrp.review_id = lr.id
+                ),
+                '[]'::json
+              ),
               'author', json_build_object(
                 'userId', lr.author_user_id,
                 'name', lr.author_name,
@@ -536,6 +569,10 @@ async function createSchema() {
       file_name TEXT NOT NULL,
       alt TEXT NOT NULL,
       uploaded_at TIMESTAMPTZ NOT NULL,
+      uploader_user_id TEXT,
+      uploader_name TEXT,
+      uploader_email TEXT,
+      uploader_role TEXT,
       sort_order INTEGER NOT NULL DEFAULT 0
     );
 
@@ -550,6 +587,22 @@ async function createSchema() {
       comment TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS listing_review_photos (
+      id TEXT PRIMARY KEY,
+      review_id TEXT NOT NULL REFERENCES listing_reviews(id) ON DELETE CASCADE,
+      storage_provider TEXT NOT NULL,
+      storage_key TEXT,
+      file_url TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      alt TEXT NOT NULL,
+      uploaded_at TIMESTAMPTZ NOT NULL,
+      uploader_user_id TEXT NOT NULL,
+      uploader_name TEXT NOT NULL,
+      uploader_email TEXT NOT NULL,
+      uploader_role TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS pending_uploads (
@@ -567,7 +620,38 @@ async function createSchema() {
     CREATE INDEX IF NOT EXISTS listings_verified_idx ON listings (verified);
     CREATE INDEX IF NOT EXISTS listing_photos_listing_id_idx ON listing_photos (listing_id);
     CREATE INDEX IF NOT EXISTS listing_reviews_listing_id_idx ON listing_reviews (listing_id);
+    CREATE INDEX IF NOT EXISTS listing_review_photos_review_id_idx ON listing_review_photos (review_id);
     CREATE INDEX IF NOT EXISTS pending_uploads_uploader_idx ON pending_uploads (uploader_user_id, consumed_at);
+  `)
+
+  await pool.query(`
+    ALTER TABLE listing_photos
+    ADD COLUMN IF NOT EXISTS uploader_user_id TEXT;
+
+    ALTER TABLE listing_photos
+    ADD COLUMN IF NOT EXISTS uploader_name TEXT;
+
+    ALTER TABLE listing_photos
+    ADD COLUMN IF NOT EXISTS uploader_email TEXT;
+
+    ALTER TABLE listing_photos
+    ADD COLUMN IF NOT EXISTS uploader_role TEXT;
+
+    UPDATE listing_photos lp
+    SET
+      uploader_user_id = COALESCE(lp.uploader_user_id, l.submitted_by_user_id),
+      uploader_name = COALESCE(lp.uploader_name, l.submitted_by_name),
+      uploader_email = COALESCE(lp.uploader_email, l.submitted_by_email),
+      uploader_role = COALESCE(lp.uploader_role, l.submitted_by_role)
+    FROM listings l
+    WHERE
+      lp.listing_id = l.id
+      AND (
+        lp.uploader_user_id IS NULL
+        OR lp.uploader_name IS NULL
+        OR lp.uploader_email IS NULL
+        OR lp.uploader_role IS NULL
+      );
   `)
 
   await pool.query(`
@@ -734,9 +818,13 @@ async function insertListing(client, listing, photos = [], reviews = []) {
           file_name,
           alt,
           uploaded_at,
+          uploader_user_id,
+          uploader_name,
+          uploader_email,
+          uploader_role,
           sort_order
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       `,
       [
         photo.id,
@@ -747,6 +835,10 @@ async function insertListing(client, listing, photos = [], reviews = []) {
         photo.fileName,
         photo.alt,
         photo.uploadedAt,
+        photo.uploadedBy?.userId ?? null,
+        photo.uploadedBy?.name ?? null,
+        photo.uploadedBy?.email ?? null,
+        photo.uploadedBy?.role ?? null,
         index,
       ],
     )
@@ -782,6 +874,46 @@ async function insertListing(client, listing, photos = [], reviews = []) {
         review.updatedAt,
       ],
     )
+
+    const reviewPhotos = Array.isArray(review.photos) ? review.photos : []
+
+    for (const [index, photo] of reviewPhotos.entries()) {
+      await client.query(
+        `
+          INSERT INTO listing_review_photos (
+            id,
+            review_id,
+            storage_provider,
+            storage_key,
+            file_url,
+            file_name,
+            alt,
+            uploaded_at,
+            uploader_user_id,
+            uploader_name,
+            uploader_email,
+            uploader_role,
+            sort_order
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        `,
+        [
+          photo.id,
+          review.id,
+          photo.storageProvider,
+          photo.storageKey,
+          photo.fileUrl,
+          photo.fileName,
+          photo.alt,
+          photo.uploadedAt,
+          photo.uploadedBy?.userId ?? review.author.userId,
+          photo.uploadedBy?.name ?? review.author.name,
+          photo.uploadedBy?.email ?? review.author.email,
+          photo.uploadedBy?.role ?? review.author.role,
+          index,
+        ],
+      )
+    }
   }
 }
 
@@ -1057,6 +1189,12 @@ async function reserveUploadedPhotos(user, photoKeys) {
     fileName: photo.fileName,
     alt: `${photo.fileName}`.replace(/\.[^.]+$/, ''),
     uploadedAt: new Date().toISOString(),
+    uploadedBy: {
+      userId: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    },
   }))
 }
 
@@ -1456,36 +1594,90 @@ app.post('/api/listings/:listingId/reviews', writeLimiter, async (request, respo
       throw new HttpError(400, 'Solo puedes evaluar items ya aprobados.')
     }
 
+    const photoKeys = normalizeStringList(parsed.data.photoKeys)
+    const reviewPhotos = await reserveUploadedPhotos(session.user, photoKeys)
+    const reviewId = makeId('review')
     const now = new Date().toISOString()
+    const client = await pool.connect()
 
-    await pool.query(
-      `
-        INSERT INTO listing_reviews (
-          id,
-          listing_id,
-          author_user_id,
-          author_name,
-          author_email,
-          author_role,
-          rating,
-          comment,
-          created_at,
-          updated_at
+    try {
+      await client.query('BEGIN')
+
+      await client.query(
+        `
+          INSERT INTO listing_reviews (
+            id,
+            listing_id,
+            author_user_id,
+            author_name,
+            author_email,
+            author_role,
+            rating,
+            comment,
+            created_at,
+            updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+        `,
+        [
+          reviewId,
+          listing.id,
+          session.user.id,
+          session.user.name,
+          session.user.email,
+          session.user.role,
+          parsed.data.rating,
+          parsed.data.comment,
+          now,
+        ],
+      )
+
+      for (const [index, photo] of reviewPhotos.entries()) {
+        await client.query(
+          `
+            INSERT INTO listing_review_photos (
+              id,
+              review_id,
+              storage_provider,
+              storage_key,
+              file_url,
+              file_name,
+              alt,
+              uploaded_at,
+              uploader_user_id,
+              uploader_name,
+              uploader_email,
+              uploader_role,
+              sort_order
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          `,
+          [
+            photo.id,
+            reviewId,
+            photo.storageProvider,
+            photo.storageKey,
+            photo.fileUrl,
+            photo.fileName,
+            photo.alt,
+            photo.uploadedAt,
+            photo.uploadedBy.userId,
+            photo.uploadedBy.name,
+            photo.uploadedBy.email,
+            photo.uploadedBy.role,
+            index,
+          ],
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-      `,
-      [
-        makeId('review'),
-        listing.id,
-        session.user.id,
-        session.user.name,
-        session.user.email,
-        session.user.role,
-        parsed.data.rating,
-        parsed.data.comment,
-        now,
-      ],
-    )
+      }
+
+      await consumeUploadedPhotos(client, photoKeys)
+      await client.query('COMMIT')
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
 
     response.json(await readListingOrThrow(listing.id))
   } catch (error) {

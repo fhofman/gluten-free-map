@@ -84,7 +84,7 @@ export async function createListing(input: CreateListingInput, csrfToken: string
 
 export async function submitReview(
   listingId: string,
-  input: { rating: number; comment: string },
+  input: { rating: number; comment: string; photoKeys?: string[] },
   csrfToken: string,
 ) {
   const response = await fetch(buildApiUrl(`listings/${listingId}/reviews`), {

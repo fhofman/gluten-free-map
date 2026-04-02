@@ -23,6 +23,16 @@ export interface ListingPhoto {
   url: string
   alt: string
   uploadedAt: string
+  uploadedBy?: ListingAuthor | null
+}
+
+export interface ReviewPhoto {
+  id: string
+  key: string | null
+  url: string
+  alt: string
+  uploadedAt: string
+  uploadedBy?: ListingAuthor | null
 }
 
 export interface ListingAuthor {
@@ -38,6 +48,7 @@ export interface ListingReview {
   comment: string
   createdAt: string
   updatedAt: string
+  photos: ReviewPhoto[]
   author: ListingAuthor
 }
 

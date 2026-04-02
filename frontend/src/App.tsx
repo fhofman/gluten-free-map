@@ -374,6 +374,7 @@ function App() {
   const [formStatus, setFormStatus] = useState<string | null>(null)
   const [reviewComment, setReviewComment] = useState('')
   const [reviewRating, setReviewRating] = useState(5)
+  const [reviewUploadRefs, setReviewUploadRefs] = useState<UploadRef[]>([])
   const [reviewPending, setReviewPending] = useState(false)
   const [reviewStatus, setReviewStatus] = useState<string | null>(null)
   const [adminStatus, setAdminStatus] = useState<string | null>(null)
@@ -653,6 +654,8 @@ function App() {
 
   function handleSelectListing(listing: Listing) {
     setSelectedId(listing.id)
+    setReviewUploadRefs([])
+    setReviewStatus(null)
 
     if (listing.coordinates) {
       setMapCenter(listing.coordinates)
@@ -835,6 +838,7 @@ function App() {
         {
           rating: reviewRating,
           comment: reviewComment,
+          photoKeys: reviewUploadRefs.map((photo) => photo.key),
         },
         session.csrfToken,
       )
@@ -844,6 +848,7 @@ function App() {
       )
       setReviewComment('')
       setReviewRating(5)
+      setReviewUploadRefs([])
       setReviewStatus(language === 'es' ? 'Reseña guardada.' : 'Review saved.')
     } catch (error) {
       setReviewStatus(error instanceof Error ? error.message : 'Could not save review.')
@@ -888,6 +893,12 @@ function App() {
   const authBaseHref = '/api/auth/login'
   const authWarning = !loadingSession && session && !session.authConfigured
   const uploadWarning = !loadingSession && session && !session.uploadConfigured
+
+  function handleClearSelectedListing() {
+    setSelectedId(null)
+    setReviewUploadRefs([])
+    setReviewStatus(null)
+  }
 
   return (
     <div className="shell">
@@ -960,7 +971,7 @@ function App() {
               onMapZoomChange={setMapZoom}
               onMapClick={handleMapClick}
               onSelectListing={handleSelectListing}
-              onClearSelectedListing={() => setSelectedId(null)}
+              onClearSelectedListing={handleClearSelectedListing}
               formOpen={formOpen}
               draft={draft}
               onOpenForm={handleOpenForm}
@@ -981,8 +992,11 @@ function App() {
               onUploadRefsChange={setUploadRefs}
               reviewComment={reviewComment}
               reviewRating={reviewRating}
+              reviewUploadRefs={reviewUploadRefs}
+              onReviewUploadRefsChange={setReviewUploadRefs}
               onReviewCommentChange={setReviewComment}
               onReviewRatingChange={setReviewRating}
+              onReviewStatusChange={setReviewStatus}
               onSubmitReview={handleSubmitReview}
               reviewPending={reviewPending}
               reviewStatus={reviewStatus}
@@ -1104,8 +1118,11 @@ function MapView(props: {
   onUploadRefsChange: (value: UploadRef[]) => void
   reviewComment: string
   reviewRating: number
+  reviewUploadRefs: UploadRef[]
+  onReviewUploadRefsChange: (value: UploadRef[]) => void
   onReviewCommentChange: (value: string) => void
   onReviewRatingChange: (value: number) => void
+  onReviewStatusChange: (value: string | null) => void
   onSubmitReview: (event: FormEvent<HTMLFormElement>) => void
   reviewPending: boolean
   reviewStatus: string | null
@@ -1147,8 +1164,11 @@ function MapView(props: {
     onUploadRefsChange,
     reviewComment,
     reviewRating,
+    reviewUploadRefs,
+    onReviewUploadRefsChange,
     onReviewCommentChange,
     onReviewRatingChange,
+    onReviewStatusChange,
     onSubmitReview,
     reviewPending,
     reviewStatus,
@@ -1157,9 +1177,13 @@ function MapView(props: {
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false)
   const [pendingUploadPreviews, setPendingUploadPreviews] = useState<PendingUploadPreview[]>([])
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
+  const [pendingReviewUploadPreviews, setPendingReviewUploadPreviews] = useState<PendingUploadPreview[]>([])
+  const [uploadingReviewPhotos, setUploadingReviewPhotos] = useState(false)
   const [hoverRating, setHoverRating] = useState<number | null>(null)
   const cameraInputRef = useRef<HTMLInputElement | null>(null)
+  const reviewCameraInputRef = useRef<HTMLInputElement | null>(null)
   const uploadWatchdogRef = useRef<number | null>(null)
+  const reviewUploadWatchdogRef = useRef<number | null>(null)
   const uploadTimeoutMessage =
     language === 'es'
       ? 'La subida tardó demasiado. Revisá tu conexión y probá de nuevo.'
@@ -1239,6 +1263,71 @@ function MapView(props: {
     onFormStatusChange(`${t.uploadError} ${error.message}`)
   }
 
+  function clearPendingReviewUploadPreviews() {
+    setPendingReviewUploadPreviews((current) => {
+      current.forEach((file) => URL.revokeObjectURL(file.url))
+      return []
+    })
+  }
+
+  function clearReviewUploadWatchdog() {
+    if (reviewUploadWatchdogRef.current === null) {
+      return
+    }
+
+    window.clearTimeout(reviewUploadWatchdogRef.current)
+    reviewUploadWatchdogRef.current = null
+  }
+
+  function startReviewUploadWatchdog() {
+    clearReviewUploadWatchdog()
+    reviewUploadWatchdogRef.current = window.setTimeout(() => {
+      clearPendingReviewUploadPreviews()
+      setUploadingReviewPhotos(false)
+      onReviewUploadRefsChange([])
+      onReviewStatusChange(uploadTimeoutMessage)
+    }, 45_000)
+  }
+
+  function setPendingReviewFiles(files: File[]) {
+    clearPendingReviewUploadPreviews()
+
+    if (files.length === 0) {
+      clearReviewUploadWatchdog()
+      setUploadingReviewPhotos(false)
+      return
+    }
+
+    setPendingReviewUploadPreviews(
+      files.map((file) => ({
+        id: `${file.name}-${file.size}-${file.lastModified}`,
+        name: file.name,
+        url: URL.createObjectURL(file),
+      })),
+    )
+    setUploadingReviewPhotos(true)
+    onReviewStatusChange(t.uploadingPhotos)
+    startReviewUploadWatchdog()
+  }
+
+  function completeReviewUploadedFiles(files: Array<{ key: string; url: string; name: string }>) {
+    clearReviewUploadWatchdog()
+    clearPendingReviewUploadPreviews()
+    setUploadingReviewPhotos(false)
+    onReviewUploadRefsChange(mergeUploadRefs(reviewUploadRefs, files))
+
+    if (files.length > 0) {
+      onReviewStatusChange(t.uploadSuccess)
+    }
+  }
+
+  function failReviewUploadedFiles(error: Error) {
+    clearReviewUploadWatchdog()
+    clearPendingReviewUploadPreviews()
+    setUploadingReviewPhotos(false)
+    onReviewStatusChange(`${t.uploadError} ${error.message}`)
+  }
+
   async function handleCameraFileChange(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? [])
     event.target.value = ''
@@ -1264,6 +1353,31 @@ function MapView(props: {
     }
   }
 
+  async function handleReviewCameraFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ''
+
+    if (files.length === 0) {
+      return
+    }
+
+    setPendingReviewFiles(files)
+
+    try {
+      const uploaded = await startCameraUpload(files)
+      const nextUploads =
+        uploaded?.map((file) => ({
+          key: file.serverData.key,
+          url: file.serverData.url,
+          name: file.serverData.name,
+        })) ?? []
+
+      completeReviewUploadedFiles(nextUploads)
+    } catch (error) {
+      failReviewUploadedFiles(error instanceof Error ? error : new Error(t.uploadError))
+    }
+  }
+
   useEffect(() => {
     if (!formOpen) {
       clearUploadWatchdog()
@@ -1276,12 +1390,21 @@ function MapView(props: {
     setHoverRating(null)
   }, [selectedListing?.id])
 
+  useEffect(() => {
+    clearReviewUploadWatchdog()
+    clearPendingReviewUploadPreviews()
+    setUploadingReviewPhotos(false)
+    onReviewStatusChange(null)
+  }, [selectedListing?.id])
+
   useEffect(
     () => () => {
       clearUploadWatchdog()
       pendingUploadPreviews.forEach((file) => URL.revokeObjectURL(file.url))
+      clearReviewUploadWatchdog()
+      pendingReviewUploadPreviews.forEach((file) => URL.revokeObjectURL(file.url))
     },
-    [pendingUploadPreviews],
+    [pendingReviewUploadPreviews, pendingUploadPreviews],
   )
 
   return (
@@ -1422,6 +1545,13 @@ function MapView(props: {
                       <span>{'★'.repeat(review.rating)}</span>
                     </div>
                     <p>{review.comment}</p>
+                    {review.photos.length > 0 ? (
+                      <div className="photo-strip">
+                        {review.photos.map((photo) => (
+                          <img key={photo.id} src={photo.url} alt={photo.alt} className="photo-thumb" />
+                        ))}
+                      </div>
+                    ) : null}
                     <small>{formatDate(review.updatedAt, language)}</small>
                   </div>
                 ))}
@@ -1466,8 +1596,90 @@ function MapView(props: {
                       rows={3}
                     />
                   </label>
-                  <button type="submit" className="solid-button" disabled={reviewPending}>
-                    {t.submitReview}
+                  {session?.uploadConfigured && session.csrfToken ? (
+                    <div className="upload-shell">
+                      <div className="upload-copy">
+                        <div className="card-title">{t.uploadPhotos}</div>
+                        <p className="helper-text">{t.uploadHint}</p>
+                        <div className="upload-actions">
+                          <button
+                            type="button"
+                            className="ghost-button upload-camera-button"
+                            onClick={() => reviewCameraInputRef.current?.click()}
+                          >
+                            {t.cameraButton}
+                          </button>
+                          <span className="helper-text">{t.cameraHint}</span>
+                        </div>
+                        <input
+                          ref={reviewCameraInputRef}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="camera-input"
+                          onChange={handleReviewCameraFileChange}
+                        />
+                      </div>
+                      <ListingUploadDropzone
+                        endpoint="listingImage"
+                        headers={{
+                          'X-CSRF-Token': session.csrfToken,
+                        }}
+                        content={{
+                          label: () => t.uploadDropLabel,
+                          button: () => t.uploadButton,
+                          allowedContent: () => t.uploadHint,
+                        }}
+                        onChange={(files) => {
+                          setPendingReviewFiles(files)
+                        }}
+                        onClientUploadComplete={(
+                          files: Array<{ serverData: UploadRef }>,
+                        ) => {
+                          const nextUploads = files.map((file) => ({
+                            key: file.serverData.key,
+                            url: file.serverData.url,
+                            name: file.serverData.name,
+                          }))
+
+                          completeReviewUploadedFiles(nextUploads)
+                        }}
+                        onUploadError={(error: Error) => {
+                          failReviewUploadedFiles(error)
+                        }}
+                      />
+                      {pendingReviewUploadPreviews.length > 0 || reviewUploadRefs.length > 0 ? (
+                        <div className="upload-preview-grid">
+                          {pendingReviewUploadPreviews.map((file) => (
+                            <figure key={file.id} className="upload-preview-card">
+                              <img src={file.url} alt={file.name} className="photo-thumb" />
+                              <figcaption className="upload-preview-meta">
+                                <span className="upload-status-badge upload-status-badge-uploading">
+                                  {t.uploadingLabel}
+                                </span>
+                                <span className="upload-preview-name">{file.name}</span>
+                              </figcaption>
+                            </figure>
+                          ))}
+                          {reviewUploadRefs.map((file) => (
+                            <figure key={file.key} className="upload-preview-card">
+                              <img src={file.url} alt={file.name} className="photo-thumb" />
+                              <figcaption className="upload-preview-meta">
+                                <span className="upload-status-badge">{t.uploadedLabel}</span>
+                                <span className="upload-preview-name">{file.name}</span>
+                              </figcaption>
+                            </figure>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <button
+                    type="submit"
+                    className="solid-button"
+                    disabled={reviewPending || uploadingReviewPhotos}
+                  >
+                    {reviewPending ? '...' : uploadingReviewPhotos ? t.uploadingLabel : t.submitReview}
                   </button>
                   {reviewStatus ? <p className="helper-text">{reviewStatus}</p> : null}
                 </form>
